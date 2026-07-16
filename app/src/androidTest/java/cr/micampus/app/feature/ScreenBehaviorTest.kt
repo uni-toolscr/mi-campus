@@ -44,7 +44,7 @@ class ScreenBehaviorTest {
     }
 
     @Test fun transportInstitutionAndDirectionAreSelectable() {
-        val viewModel = TransportViewModel(app().container.transport)
+        val viewModel = TransportViewModel(app().container.transport, app().container.settings)
         compose.setContent {
             val state by viewModel.state.collectAsState()
             MiCampusTheme(dynamicColor = false) {

@@ -11,10 +11,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.DirectionsBus
 import androidx.compose.material.icons.outlined.UploadFile
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -25,8 +28,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import cr.micampus.app.core.designsystem.EmptyState
 import cr.micampus.app.core.designsystem.LoadingState
+import cr.micampus.app.core.designsystem.edgeToEdgeContentPadding
+import cr.micampus.app.core.designsystem.safeHorizontalInsets
 import cr.micampus.app.core.model.CampusEvent
 import cr.micampus.app.core.model.EventKind
+import cr.micampus.app.data.institution.UpcomingDeparture
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
@@ -35,41 +41,58 @@ private val eventFormatter = DateTimeFormatter.ofPattern("EEE d MMM · HH:mm", L
 @Composable
 fun HomeScreen(state: HomeUiState, onImport: () -> Unit) {
     LazyColumn(
-        Modifier.fillMaxSize().padding(horizontal = 20.dp),
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 20.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        Modifier.fillMaxSize().safeHorizontalInsets().padding(horizontal = 20.dp),
+        contentPadding = edgeToEdgeContentPadding(),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         item {
-            Text("Inicio", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
+            Text("Inicio", style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold)
             Text("Tu campus, disponible sin conexión", color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         item {
-            Button(onClick = onImport, modifier = Modifier.fillMaxWidth().height(52.dp)) {
+            Button(
+                onClick = onImport,
+                modifier = Modifier.fillMaxWidth().height(56.dp),
+                shape = RoundedCornerShape(28.dp),
+            ) {
                 Icon(Icons.Outlined.UploadFile, contentDescription = null)
                 Spacer(Modifier.width(8.dp))
-                Text("Importar programa o horario PDF")
+                Text("Importar programa o horario PDF", style = MaterialTheme.typography.titleMedium)
             }
         }
         if (state.loading) item { LoadingState() }
         else {
             item { SectionTitle("Próximos eventos") }
-            if (state.events.isEmpty()) item { EmptyState("Todavía no hay eventos", "Importa un PDF o crea un evento desde Calendario.") }
-            else items(state.events, key = CampusEvent::id) { EventCard(it) }
+            val nextEvent = state.events.firstOrNull()
+            if (nextEvent == null) {
+                item { EmptyState("Todavía no hay eventos", "Importa un PDF o crea un evento desde Calendario.") }
+            } else {
+                item { HeroEventCard(nextEvent) }
+                if (state.events.size > 1) items(state.events.drop(1), key = CampusEvent::id) { EventCard(it) }
+            }
 
             item { SectionTitle("Próximos buses") }
             if (state.buses.isEmpty()) item { EmptyState("Sin salidas próximas verificadas", "Revisa Transporte para el próximo día de servicio.") }
-            else items(state.buses, key = { "${it.institution}-${it.direction}" }) { bus ->
-                ElevatedCard(Modifier.fillMaxWidth()) {
-                    Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Icon(Icons.Outlined.DirectionsBus, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                        Column {
-                            Text("${bus.institution.name} · ${bus.departure.toLocalTime()}", style = MaterialTheme.typography.titleMedium)
-                            Text(bus.direction, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text("Horario verificado · sin conexión", style = MaterialTheme.typography.labelMedium)
-                        }
-                    }
-                }
-            }
+            else items(state.buses, key = { "${it.institution}-${it.directionId}" }) { bus -> BusCard(bus) }
+        }
+    }
+}
+
+@Composable
+private fun HeroEventCard(event: CampusEvent) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(28.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer,
+            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+        ),
+    ) {
+        Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(eventKindLabel(event.kind).uppercase(), style = MaterialTheme.typography.labelLarge)
+            Text(event.title, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+            Text("${event.start.format(eventFormatter)} – ${event.end.toLocalTime()}", style = MaterialTheme.typography.titleMedium)
+            if (event.location.isNotBlank()) Text(event.location, style = MaterialTheme.typography.bodyMedium)
         }
     }
 }
@@ -86,6 +109,24 @@ fun EventCard(event: CampusEvent, modifier: Modifier = Modifier, onClick: (() ->
     }
     if (onClick == null) ElevatedCard(modifier.fillMaxWidth()) { content() }
     else ElevatedCard(onClick = onClick, modifier = modifier.fillMaxWidth()) { content() }
+}
+
+@Composable
+private fun BusCard(bus: UpcomingDeparture) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+    ) {
+        Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Icon(Icons.Outlined.DirectionsBus, contentDescription = null, tint = MaterialTheme.colorScheme.onSecondaryContainer)
+            Column {
+                Text("${bus.institution.name} · ${bus.departure.toLocalTime()}", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSecondaryContainer)
+                Text("${bus.from} → ${bus.to}", color = MaterialTheme.colorScheme.onSecondaryContainer)
+                Text("Horario verificado · sin conexión", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSecondaryContainer)
+            }
+        }
+    }
 }
 
 private fun eventKindLabel(kind: EventKind) = when (kind) {

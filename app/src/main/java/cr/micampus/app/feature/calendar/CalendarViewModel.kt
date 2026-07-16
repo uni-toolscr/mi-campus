@@ -37,16 +37,25 @@ data class CalendarUiState(
     val events: List<CampusEvent> = emptyList(),
     val message: String? = null,
     val confirmationPending: Boolean = false,
-)
+    val enabledInstitutions: List<Institution> = Institution.values().toList(),
+) {
+    /** Sensible default institution for a brand-new event: the single enabled one, or UCR when both/neither are set. */
+    val defaultInstitution: Institution get() = enabledInstitutions.singleOrNull() ?: Institution.UCR
+}
 
 class CalendarViewModel(
     private val repository: EventRepository,
     private val exporter: CalendarExporter,
     private val reminders: ReminderScheduler,
     private val settings: SettingsStore,
+    private val onDataChanged: suspend () -> Unit = {},
 ) : ViewModel() {
     private val controls = MutableStateFlow(CalendarUiState())
-    val state: StateFlow<CalendarUiState> = combine(repository.confirmedEvents, controls) { events, control ->
+    val state: StateFlow<CalendarUiState> = combine(repository.confirmedEvents, controls, settings.settings) { events, control, appSettings ->
+        val enabled = buildList {
+            if (appSettings.ucrEnabled) add(Institution.UCR)
+            if (appSettings.unaEnabled) add(Institution.UNA)
+        }.ifEmpty { listOf(Institution.UCR) }
         control.copy(
             loading = false,
             events = events.filter { event ->
@@ -54,6 +63,7 @@ class CalendarViewModel(
                     (control.filters.kind == null || event.kind == control.filters.kind) &&
                     (control.filters.courseQuery.isBlank() || event.title.contains(control.filters.courseQuery, true) || event.notes.contains(control.filters.courseQuery, true))
             },
+            enabledInstitutions = enabled,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), CalendarUiState())
 
@@ -71,12 +81,14 @@ class CalendarViewModel(
         repository.save(event)
         val appSettings = settings.current()
         reminders.schedule(event, ReminderSettings(enabled = appSettings.remindersEnabled), appSettings.exactReminders)
+        onDataChanged()
         controls.update { it.copy(message = "Evento guardado") }
     }
 
     fun delete(event: CampusEvent) = viewModelScope.launch {
         reminders.cancel(event.id)
         repository.delete(event)
+        onDataChanged()
         controls.update { it.copy(message = "Evento eliminado") }
     }
 

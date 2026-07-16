@@ -7,6 +7,37 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <application android:name=".MiCampusApplication" android:theme="@style/Theme.MiCampus" android:label="Mi Campus" android:icon="@drawable/ic_micampus" android:roundIcon="@drawable/ic_micampus" android:allowBackup="true" android:fullBackupOnly="true" android:dataExtractionRules="@xml/data_extraction_rules" android:fullBackupContent="@xml/backup_rules" android:supportsRtl="true">
         <activity android:name=".MainActivity" android:exported="true"><intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter></activity>
+        <activity
+            android:name=".platform.widgets.BusWidgetConfigActivity"
+            android:exported="true"
+            android:label="@string/widget_config_title"
+            android:theme="@style/Theme.MiCampus">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />
+            </intent-filter>
+        </activity>
+        <receiver
+            android:name=".platform.widgets.EventsWidgetReceiver"
+            android:exported="false"
+            android:label="@string/widget_events_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_events_info" />
+        </receiver>
+        <receiver
+            android:name=".platform.widgets.BusesWidgetReceiver"
+            android:exported="false"
+            android:label="@string/widget_buses_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_buses_info" />
+        </receiver>
         <receiver android:name=".platform.reminders.ReminderReceiver" android:exported="false" />
         <receiver android:name=".platform.reminders.ReminderRescheduleReceiver" android:exported="true">
             <intent-filter>

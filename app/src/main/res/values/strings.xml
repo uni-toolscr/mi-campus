@@ -1,0 +1,13 @@
+<resources>
+    <string name="widget_events_label">Próximos eventos</string>
+    <string name="widget_events_description">Muestra los próximos eventos confirmados del calendario.</string>
+    <string name="widget_buses_label">Próximos buses</string>
+    <string name="widget_buses_description">Muestra las próximas salidas de bus verificadas, filtradas por institución.</string>
+    <string name="widget_config_title">Configurar widget de buses</string>
+    <string name="widget_config_confirm">Listo</string>
+    <string name="widget_events_empty">Todavía no hay eventos</string>
+    <string name="widget_buses_empty">Sin salidas próximas verificadas</string>
+    <string name="widget_institution_ucr">UCR</string>
+    <string name="widget_institution_una">UNA</string>
+    <string name="widget_institution_both">Ambas</string>
+</resources>

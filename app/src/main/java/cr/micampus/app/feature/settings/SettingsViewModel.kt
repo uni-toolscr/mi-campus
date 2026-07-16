@@ -36,7 +36,8 @@ class SettingsViewModel(
 
     fun setInstitutions(ucr: Boolean, una: Boolean) {
         if (!ucr && !una) {
-            message.value = "Selecciona al menos una institución"
+            // Ignore the toggle that would leave the student with no active institution.
+            message.value = "Debes mantener al menos una institución activa"
             return
         }
         viewModelScope.launch { store.setOnboarding(true, ucr, una) }

@@ -20,6 +20,7 @@ dependencies {
     implementation(libs.androidx.lifecycle.viewmodel.compose); implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.compose.material3.adaptive); implementation(libs.androidx.compose.material3.navigation.suite)
     implementation(libs.gson)
+    implementation(libs.androidx.glance.appwidget)
     implementation(libs.mlkit.text)
     implementation(libs.genai.prompt)
     ksp(libs.androidx.room.compiler)

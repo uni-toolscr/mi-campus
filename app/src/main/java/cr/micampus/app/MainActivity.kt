@@ -3,6 +3,7 @@ package cr.micampus.app
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material.icons.Icons
@@ -43,6 +44,7 @@ import cr.micampus.app.feature.transport.TransportViewModel
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
         setContent { MiCampusRoot() }
     }
 }
@@ -71,10 +73,10 @@ private fun MainDestinations(container: AppContainer) {
     var importing by rememberSaveable { mutableStateOf(false) }
     val expanded = LocalConfiguration.current.screenWidthDp >= 840
     val home: HomeViewModel = viewModel(factory = factory { HomeViewModel(container.events, container.settings, container.transport) })
-    val calendar: CalendarViewModel = viewModel(factory = factory { CalendarViewModel(container.events, container.calendar, container.reminders, container.settings) })
-    val transport: TransportViewModel = viewModel(factory = factory { TransportViewModel(container.transport) })
+    val calendar: CalendarViewModel = viewModel(factory = factory { CalendarViewModel(container.events, container.calendar, container.reminders, container.settings, container.widgets::refreshAll) })
+    val transport: TransportViewModel = viewModel(factory = factory { TransportViewModel(container.transport, container.settings) })
     val settings: SettingsViewModel = viewModel(factory = factory { SettingsViewModel(container.settings, container.keyStore, container.events, container.reminders) })
-    val importer: ImporterViewModel = viewModel(factory = factory { ImporterViewModel(container.documents, container.events, container.settings, container.reminders, container.cloud) })
+    val importer: ImporterViewModel = viewModel(factory = factory { ImporterViewModel(container.documents, container.events, container.settings, container.reminders, container.cloud, onDataChanged = container.widgets::refreshAll) })
     val homeState by home.state.collectAsStateWithLifecycle()
     val calendarState by calendar.state.collectAsStateWithLifecycle()
     val transportState by transport.state.collectAsStateWithLifecycle()

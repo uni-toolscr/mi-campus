@@ -4,8 +4,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import cr.micampus.app.core.model.CampusEvent
 import cr.micampus.app.core.model.Institution
-import cr.micampus.app.core.model.ServiceStatus
 import cr.micampus.app.data.institution.AssetTransportRepository
+import cr.micampus.app.data.institution.UpcomingDeparture
+import cr.micampus.app.data.institution.upcomingDepartures
 import cr.micampus.app.data.local.AppSettings
 import cr.micampus.app.data.local.EventRepository
 import cr.micampus.app.data.local.SettingsStore
@@ -15,13 +16,11 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import java.time.Clock
 import java.time.LocalDateTime
-import java.time.LocalTime
 
-data class NextBus(val institution: Institution, val direction: String, val departure: LocalDateTime)
 data class HomeUiState(
     val loading: Boolean = true,
     val events: List<CampusEvent> = emptyList(),
-    val buses: List<NextBus> = emptyList(),
+    val buses: List<UpcomingDeparture> = emptyList(),
 )
 
 class HomeViewModel(
@@ -39,17 +38,11 @@ class HomeViewModel(
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeUiState())
 
-    private fun nextBuses(settings: AppSettings, now: LocalDateTime): List<NextBus> {
+    private fun nextBuses(settings: AppSettings, now: LocalDateTime): List<UpcomingDeparture> {
         val institutions = buildList {
             if (settings.ucrEnabled) add(Institution.UCR)
             if (settings.unaEnabled) add(Institution.UNA)
         }
-        return institutions.mapNotNull { institution ->
-            val direction = transport.directions(institution).firstOrNull() ?: return@mapNotNull null
-            val service = transport.service(institution, direction.id, now.toLocalDate())
-            if (service.status != ServiceStatus.VERIFIED) return@mapNotNull null
-            val time = service.departures.map(LocalTime::parse).firstOrNull { it.isAfter(now.toLocalTime()) } ?: return@mapNotNull null
-            NextBus(institution, "${direction.from} → ${direction.to}", LocalDateTime.of(now.toLocalDate(), time))
-        }.sortedBy { it.departure }
+        return transport.upcomingDepartures(institutions, now, limit = 4)
     }
 }

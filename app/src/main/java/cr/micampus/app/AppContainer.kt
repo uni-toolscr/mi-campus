@@ -9,6 +9,7 @@ import cr.micampus.app.data.document.DocumentImporter
 import cr.micampus.app.data.document.PdfDocumentExtractor
 import cr.micampus.app.platform.calendar.CalendarExporter
 import cr.micampus.app.platform.reminders.ReminderScheduler
+import cr.micampus.app.platform.widgets.WidgetRefresher
 
 class AppContainer(context: Context) {
     val database: MiCampusDatabase = DatabaseProvider.get(context)
@@ -20,4 +21,5 @@ class AppContainer(context: Context) {
     val documents: DocumentImporter = DocumentImporter(PdfDocumentExtractor(context))
     val calendar: CalendarExporter = CalendarExporter(context)
     val reminders: ReminderScheduler = ReminderScheduler(context)
+    val widgets: WidgetRefresher = WidgetRefresher(context.applicationContext)
 }

@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -63,7 +64,7 @@ fun ImporterScreen(state: ImporterUiState, viewModel: ImporterViewModel, onClose
             dismissButton = { TextButton(onClick = { viewModel.decideCloud(false) }) { Text("Continuar manualmente") } },
         )
     }
-    editing?.let { draft -> DraftEditor(draft, onDismiss = { editing = null }, onSave = { viewModel.updateDraft(it); editing = null }) }
+    editing?.let { draft -> DraftEditor(draft, enabledInstitutions = state.enabledInstitutions, onDismiss = { editing = null }, onSave = { viewModel.updateDraft(it); editing = null }) }
     Scaffold(
         topBar = {
             TopAppBar(
@@ -100,8 +101,8 @@ private fun ImportStart(modifier: Modifier, onPick: () -> Unit, onManual: () -> 
         Icon(Icons.Outlined.UploadFile, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
         Text("Convierte un programa de curso en borradores", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
         Text("Primero se intenta texto local y OCR. Nada se confirma automáticamente.", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = 12.dp))
-        Button(onClick = onPick, modifier = Modifier.fillMaxWidth()) { Text("Seleccionar PDF") }
-        OutlinedButton(onClick = onManual, modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) { Text("Ingresar evento manualmente") }
+        Button(onClick = onPick, modifier = Modifier.fillMaxWidth().height(56.dp), shape = androidx.compose.foundation.shape.RoundedCornerShape(28.dp)) { Text("Seleccionar PDF", style = MaterialTheme.typography.titleMedium) }
+        OutlinedButton(onClick = onManual, modifier = Modifier.fillMaxWidth().padding(top = 8.dp).height(52.dp), shape = androidx.compose.foundation.shape.RoundedCornerShape(26.dp)) { Text("Ingresar evento manualmente") }
     }
 }
 
@@ -137,7 +138,7 @@ private fun DraftReview(
 }
 
 @Composable
-private fun DraftEditor(draft: CalendarEventDraft, onDismiss: () -> Unit, onSave: (CalendarEventDraft) -> Unit) {
+private fun DraftEditor(draft: CalendarEventDraft, enabledInstitutions: List<Institution>, onDismiss: () -> Unit, onSave: (CalendarEventDraft) -> Unit) {
     var title by remember(draft.id) { mutableStateOf(draft.title.orEmpty()) }
     var date by remember(draft.id) { mutableStateOf(draft.date?.toString().orEmpty()) }
     var start by remember(draft.id) { mutableStateOf(draft.startTime?.toString().orEmpty()) }
@@ -148,6 +149,8 @@ private fun DraftEditor(draft: CalendarEventDraft, onDismiss: () -> Unit, onSave
     var category by remember(draft.id) { mutableStateOf(draft.category ?: EventCategory.OTHER) }
     var institutionMenu by remember { mutableStateOf(false) }
     var categoryMenu by remember { mutableStateOf(false) }
+    // Offer only enabled institutions, plus the draft's current institution if it's disabled.
+    val institutionOptions = (enabledInstitutions + listOfNotNull(draft.institution)).distinct()
     val parsedDate = runCatching { LocalDate.parse(date) }.getOrNull()
     val parsedStart = runCatching { LocalTime.parse(start) }.getOrNull()
     val parsedEnd = runCatching { LocalTime.parse(end) }.getOrNull()
@@ -157,7 +160,12 @@ private fun DraftEditor(draft: CalendarEventDraft, onDismiss: () -> Unit, onSave
         text = {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 item { OutlinedTextField(title, { title = it }, label = { Text("Título") }, modifier = Modifier.fillMaxWidth()) }
-                item { TextButton(onClick = { institutionMenu = true }) { Text("Institución: ${institution?.name ?: "Seleccionar"}") }; DropdownMenu(institutionMenu, { institutionMenu = false }) { Institution.values().forEach { value -> DropdownMenuItem({ Text(value.name) }, { institution = value; institutionMenu = false }) } } }
+                item {
+                    TextButton(onClick = { institutionMenu = true }) { Text("Institución: ${institution?.name ?: "Seleccionar"}") }
+                    DropdownMenu(institutionMenu, { institutionMenu = false }) {
+                        institutionOptions.forEach { value -> DropdownMenuItem({ Text(value.name) }, { institution = value; institutionMenu = false }) }
+                    }
+                }
                 item { TextButton(onClick = { categoryMenu = true }) { Text("Categoría: ${category.name}") }; DropdownMenu(categoryMenu, { categoryMenu = false }) { EventCategory.values().forEach { value -> DropdownMenuItem({ Text(value.name) }, { category = value; categoryMenu = false }) } } }
                 item { OutlinedTextField(date, { date = it }, label = { Text("Fecha (AAAA-MM-DD)") }, isError = date.isNotBlank() && parsedDate == null, modifier = Modifier.fillMaxWidth()) }
                 item { OutlinedTextField(start, { start = it }, label = { Text("Inicio (HH:MM)") }, isError = start.isNotBlank() && parsedStart == null, modifier = Modifier.fillMaxWidth()) }

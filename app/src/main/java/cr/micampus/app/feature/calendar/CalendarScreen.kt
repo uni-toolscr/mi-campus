@@ -3,17 +3,19 @@ package cr.micampus.app.feature.calendar
 import android.Manifest
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.CalendarMonth
@@ -24,6 +26,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -31,8 +34,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -41,6 +48,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -101,12 +109,28 @@ fun CalendarScreen(state: CalendarUiState, viewModel: CalendarViewModel, expande
             dismissButton = { TextButton(onClick = { showCalendars = false }) { Text("Cerrar") } },
         )
     }
-    editor?.let { event -> EventEditorDialog(event, onDismiss = { editor = null }, onSave = { viewModel.save(it); editor = null }, onDelete = if (state.events.any { it.id == event.id }) ({ viewModel.delete(event); editor = null }) else null) }
-    Scaffold(snackbarHost = { SnackbarHost(snackbar) }) { padding ->
+    editor?.let { event ->
+        EventEditorDialog(
+            event,
+            enabledInstitutions = state.enabledInstitutions,
+            onDismiss = { editor = null },
+            onSave = { viewModel.save(it); editor = null },
+            onDelete = if (state.events.any { it.id == event.id }) ({ viewModel.delete(event); editor = null }) else null,
+        )
+    }
+    Scaffold(
+        snackbarHost = { SnackbarHost(snackbar) },
+        floatingActionButton = {
+            ExtendedFloatingActionButton(onClick = { editor = newEvent(state.defaultInstitution) }) {
+                Icon(Icons.Outlined.Add, contentDescription = null)
+                androidx.compose.foundation.layout.Spacer(Modifier.size(8.dp))
+                Text("Crear evento")
+            }
+        },
+    ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).padding(horizontal = 20.dp)) {
-            Row(Modifier.fillMaxWidth().padding(top = 20.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                Column { Text("Calendario", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold); Text("Eventos confirmados", color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                IconButton(onClick = { editor = newEvent() }) { Icon(Icons.Outlined.Add, contentDescription = "Crear evento") }
+            Row(Modifier.fillMaxWidth().padding(top = 20.dp)) {
+                Column { Text("Calendario", style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold); Text("Eventos confirmados", color = MaterialTheme.colorScheme.onSurfaceVariant) }
             }
             CalendarControls(state, viewModel)
             if (expanded) {
@@ -128,11 +152,19 @@ fun CalendarScreen(state: CalendarUiState, viewModel: CalendarViewModel, expande
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun CalendarControls(state: CalendarUiState, viewModel: CalendarViewModel) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(vertical = 12.dp)) {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            CalendarPresentation.values().forEach { mode -> FilterChip(selected = state.presentation == mode, onClick = { viewModel.setPresentation(mode) }, label = { Text(if (mode == CalendarPresentation.MONTH) "Mes" else "Agenda") }) }
+        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+            CalendarPresentation.values().forEachIndexed { index, mode ->
+                SegmentedButton(
+                    selected = state.presentation == mode,
+                    onClick = { viewModel.setPresentation(mode) },
+                    shape = SegmentedButtonDefaults.itemShape(index = index, count = CalendarPresentation.values().size),
+                    label = { Text(if (mode == CalendarPresentation.MONTH) "Mes" else "Agenda") },
+                )
+            }
         }
         LazyRowFilters(state, viewModel)
         OutlinedTextField(value = state.filters.courseQuery, onValueChange = viewModel::setCourseQuery, label = { Text("Filtrar por curso o texto") }, singleLine = true, modifier = Modifier.fillMaxWidth())
@@ -142,8 +174,11 @@ private fun CalendarControls(state: CalendarUiState, viewModel: CalendarViewMode
 @Composable
 private fun LazyRowFilters(state: CalendarUiState, viewModel: CalendarViewModel) {
     androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        item { FilterChip(selected = state.filters.institution == null, onClick = { viewModel.setInstitution(null) }, label = { Text("Todas") }) }
-        items(Institution.values().toList()) { institution -> FilterChip(selected = state.filters.institution == institution, onClick = { viewModel.setInstitution(institution) }, label = { Text(institution.name) }) }
+        // Both institutions are only worth filtering between when the student actually enabled both.
+        if (state.enabledInstitutions.size > 1) {
+            item { FilterChip(selected = state.filters.institution == null, onClick = { viewModel.setInstitution(null) }, label = { Text("Todas") }) }
+            items(Institution.values().toList()) { institution -> FilterChip(selected = state.filters.institution == institution, onClick = { viewModel.setInstitution(institution) }, label = { Text(institution.name) }) }
+        }
         item { FilterChip(selected = state.filters.kind == null, onClick = { viewModel.setKind(null) }, label = { Text("Categorías") }) }
         items(EventKind.values().toList()) { kind -> FilterChip(selected = state.filters.kind == kind, onClick = { viewModel.setKind(kind) }, label = { Text(kindLabel(kind)) }) }
     }
@@ -162,6 +197,7 @@ private fun Agenda(state: CalendarUiState, onEvent: (CampusEvent) -> Unit, modif
 
 @Composable
 private fun MonthPanel(month: YearMonth, events: List<CampusEvent>, onMonth: (YearMonth) -> Unit, modifier: Modifier = Modifier) {
+    val today = java.time.LocalDate.now()
     Column(modifier.padding(vertical = 8.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             IconButton(onClick = { onMonth(month.minusMonths(1)) }) {
@@ -182,10 +218,22 @@ private fun MonthPanel(month: YearMonth, events: List<CampusEvent>, onMonth: (Ye
         cells.chunked(7).forEach { week ->
             Row(Modifier.fillMaxWidth()) {
                 week.forEach { day ->
-                    val count = day?.let { value -> events.count { it.start.toLocalDate() == month.atDay(value) } } ?: 0
-                    Column(Modifier.weight(1f).padding(5.dp)) {
-                        Text(day?.toString().orEmpty())
-                        if (count > 0) Text("• $count", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelSmall)
+                    val date = day?.let { month.atDay(it) }
+                    val count = date?.let { value -> events.count { it.start.toLocalDate() == value } } ?: 0
+                    val isToday = date == today
+                    Column(Modifier.weight(1f).padding(5.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        if (isToday) {
+                            Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp)) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Text(day?.toString().orEmpty(), color = MaterialTheme.colorScheme.onPrimary, style = MaterialTheme.typography.labelMedium)
+                                }
+                            }
+                        } else {
+                            Text(day?.toString().orEmpty())
+                        }
+                        if (count > 0) {
+                            Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primary, modifier = Modifier.size(6.dp)) {}
+                        }
                     }
                 }
                 repeat(7 - week.size) { Column(Modifier.weight(1f)) {} }
@@ -196,7 +244,13 @@ private fun MonthPanel(month: YearMonth, events: List<CampusEvent>, onMonth: (Ye
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun EventEditorDialog(event: CampusEvent, onDismiss: () -> Unit, onSave: (CampusEvent) -> Unit, onDelete: (() -> Unit)?) {
+private fun EventEditorDialog(
+    event: CampusEvent,
+    enabledInstitutions: List<Institution>,
+    onDismiss: () -> Unit,
+    onSave: (CampusEvent) -> Unit,
+    onDelete: (() -> Unit)?,
+) {
     var title by remember(event.id) { mutableStateOf(event.title) }
     var institution by remember(event.id) { mutableStateOf(event.institution) }
     var kind by remember(event.id) { mutableStateOf(event.kind) }
@@ -205,6 +259,8 @@ private fun EventEditorDialog(event: CampusEvent, onDismiss: () -> Unit, onSave:
     var location by remember(event.id) { mutableStateOf(event.location) }
     var institutionMenu by remember { mutableStateOf(false) }
     var kindMenu by remember { mutableStateOf(false) }
+    // Offer enabled institutions, plus the event's own institution if it was disabled after being set.
+    val institutionOptions = (enabledInstitutions + event.institution).distinct()
     val parsedStart = runCatching { LocalDateTime.parse(start) }.getOrNull()
     val parsedEnd = runCatching { LocalDateTime.parse(end) }.getOrNull()
     AlertDialog(
@@ -213,7 +269,12 @@ private fun EventEditorDialog(event: CampusEvent, onDismiss: () -> Unit, onSave:
         text = {
             LazyColumn(Modifier.widthIn(max = 520.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 item { OutlinedTextField(title, { title = it }, label = { Text("Título") }, modifier = Modifier.fillMaxWidth()) }
-                item { TextButton(onClick = { institutionMenu = true }) { Text("Institución: ${institution.name}") }; DropdownMenu(institutionMenu, { institutionMenu = false }) { Institution.values().forEach { value -> DropdownMenuItem({ Text(value.name) }, { institution = value; institutionMenu = false }) } } }
+                item {
+                    TextButton(onClick = { institutionMenu = true }) { Text("Institución: ${institution.name}") }
+                    DropdownMenu(institutionMenu, { institutionMenu = false }) {
+                        institutionOptions.forEach { value -> DropdownMenuItem({ Text(value.name) }, { institution = value; institutionMenu = false }) }
+                    }
+                }
                 item { TextButton(onClick = { kindMenu = true }) { Text("Categoría: ${kindLabel(kind)}") }; DropdownMenu(kindMenu, { kindMenu = false }) { EventKind.values().forEach { value -> DropdownMenuItem({ Text(kindLabel(value)) }, { kind = value; kindMenu = false }) } } }
                 item { OutlinedTextField(start, { start = it }, label = { Text("Inicio (AAAA-MM-DDTHH:MM)") }, isError = parsedStart == null, modifier = Modifier.fillMaxWidth()) }
                 item { OutlinedTextField(end, { end = it }, label = { Text("Fin (AAAA-MM-DDTHH:MM)") }, isError = parsedEnd == null || (parsedStart != null && !parsedEnd.isAfter(parsedStart)), modifier = Modifier.fillMaxWidth()) }
@@ -226,9 +287,9 @@ private fun EventEditorDialog(event: CampusEvent, onDismiss: () -> Unit, onSave:
     )
 }
 
-private fun newEvent(): CampusEvent {
+private fun newEvent(defaultInstitution: Institution): CampusEvent {
     val start = LocalDateTime.now().withSecond(0).withNano(0).plusHours(1)
-    return CampusEvent("manual-${System.currentTimeMillis()}", "", Institution.UCR, EventKind.ACTIVITY, start, start.plusHours(1))
+    return CampusEvent("manual-${System.currentTimeMillis()}", "", defaultInstitution, EventKind.ACTIVITY, start, start.plusHours(1))
 }
 
 private fun kindLabel(kind: EventKind) = when (kind) {

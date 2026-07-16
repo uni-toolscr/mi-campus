@@ -43,6 +43,7 @@ data class ImporterUiState(
     val nanoCapability: NanoCapability? = null,
     val nanoBytes: Long = 0,
     val importId: String? = null,
+    val enabledInstitutions: List<Institution> = Institution.values().toList(),
 )
 
 private class PerImportConsent : CloudConsent {
@@ -60,6 +61,7 @@ class ImporterViewModel(
     cloud: GeminiCloudEngine,
     private val nano: MlKitNanoEngine = MlKitNanoEngine(),
     private val chunker: TokenChunker = TokenChunker(),
+    private val onDataChanged: suspend () -> Unit = {},
 ) : ViewModel() {
     private val consent = PerImportConsent()
     private val engine = EventExtractionEngine(local = nano, cloud = cloud, consent = consent)
@@ -73,6 +75,15 @@ class ImporterViewModel(
                 if (restored.isNotEmpty() && mutableState.value.stage == ImportStage.IDLE) {
                     mutableState.value = ImporterUiState(ImportStage.REVIEW, restored, "Borradores restaurados")
                 }
+            }
+        }
+        viewModelScope.launch {
+            settings.settings.collect { appSettings ->
+                val enabled = buildList {
+                    if (appSettings.ucrEnabled) add(Institution.UCR)
+                    if (appSettings.unaEnabled) add(Institution.UNA)
+                }.ifEmpty { listOf(Institution.UCR) }
+                mutableState.update { it.copy(enabledInstitutions = enabled) }
             }
         }
     }
@@ -156,11 +167,12 @@ class ImporterViewModel(
     }
 
     fun addManualDraft(institution: Institution? = null) {
+        val resolvedInstitution = institution ?: mutableState.value.enabledInstitutions.singleOrNull()
         val draft = CalendarEventDraft(
             id = UUID.randomUUID().toString(),
             title = null,
             category = EventCategory.OTHER,
-            institution = institution,
+            institution = resolvedInstitution,
             date = null,
             startTime = null,
             endTime = null,
@@ -216,6 +228,7 @@ class ImporterViewModel(
             events.deleteDraft(id)
             val appSettings = settings.current()
             reminders.schedule(event, ReminderSettings(enabled = appSettings.remindersEnabled), appSettings.exactReminders)
+            onDataChanged()
             mutableState.update { current ->
                 val remaining = current.drafts.filterNot { it.id == id }
                 current.copy(stage = if (remaining.isEmpty()) ImportStage.IDLE else ImportStage.REVIEW, drafts = remaining, message = "Evento confirmado")
