@@ -1,0 +1,1 @@
+# MiCampus release rules

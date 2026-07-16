@@ -1,0 +1,18 @@
+# Reference audit
+
+Audit date: 2026-07-16. The supplied `REFERENCE` tree was reviewed read-only. No source files, images, branding, artwork, assets, screens, or license text were copied into Mi Campus.
+
+| Mi Campus area | Reference files reviewed | Pattern adapted and rationale |
+|---|---|---|
+| App shell and responsive navigation | Reply `ReplyApp.kt`, `ReplyNavigationComponents.kt`; Jetcaster `JetcasterApp.kt`, `JetcasterAppState.kt` | Material navigation suite with one saved destination state gives the four MVP areas an appropriate bottom bar/rail without adopting sample identity. |
+| Onboarding | Jetchat `Themes.kt`; Reply `theme/Theme.kt` | Material 3 color/typography boundaries were applied to original institution checkbox cards. The card interaction makes one-or-both selection visible and accessible. |
+| Inicio | Jetcaster `home/HomeViewModel.kt`, `home/Home.kt`, `shared/Loading.kt` | Repository-fed immutable state plus explicit loading/empty sections fits upcoming events and verified departures while preserving offline clarity. |
+| Calendario | Reply list/detail layout and responsive navigation files; Jetcaster app-state boundaries | Compact month/agenda switching becomes a simultaneous two-pane view on expanded widths. Filters remain screen state, not composable-owned business data. |
+| Transporte | Jetcaster state/content separation | Dataset resolution stays in a repository; the screen renders verified/no-service/expired state and omits countdowns when data is outside its verified range. |
+| Importador | Jetchat `ConversationUiState.kt`, `MainViewModel.kt` | A staged state machine makes extraction, consent, download, review, errors, and manual fallback explicit; no conversational visuals or branding were copied. |
+| Ajustes | Reply `theme/Theme.kt`; Jetchat `Themes.kt` | System/light/dark and dynamic color are app settings, with permission actions adjacent to the feature that needs them. |
+| Shared theme and states | Jetcaster `theme/Theme.kt`, `core/designsystem/theme/*`, `shared/Loading.kt`; Jetchat `Themes.kt` | Original Mi Campus theme, empty/loading/error components, and previews use current Material APIs while retaining independent visuals and Spanish copy. |
+
+Official guidance checked before adoption: [Material 3 design systems](https://developer.android.com/develop/ui/compose/designsystems), [adaptive layouts](https://developer.android.com/develop/ui/compose/layouts/adaptive), [Compose architecture](https://developer.android.com/develop/ui/compose/architecture), [Storage Access Framework](https://developer.android.com/training/data-storage/shared/documents-files), [ML Kit text recognition](https://developers.google.com/ml-kit/vision/text-recognition/android), [ML Kit Prompt API](https://developers.google.com/ml-kit/genai/prompt/android), [structured output fallback](https://ai.google.dev/gemini-api/docs/structured-output), [Room](https://developer.android.com/training/data-storage/room), [DataStore](https://developer.android.com/topic/libraries/architecture/datastore), [exact alarms](https://developer.android.com/develop/background-work/services/alarms), [Calendar provider](https://developer.android.com/guide/topics/providers/calendar-provider), and [Auto Backup](https://developer.android.com/identity/data/autobackup).
+
+Institutional data sources: [UCR external bus schedule](https://www.ucr.ac.cr/acerca-u/campus/bus-externo.html) and [UNA peripheral service notice](https://www.vidaestudiantil.una.ac.cr/noticias/2653-servicio-de-periferica-para-estudiantes-desde-el-campus-omar-dengo-al-campus-benjamin-nunez-y-viceversa). The UNA page-title/year inconsistency is retained only in dataset audit metadata.
