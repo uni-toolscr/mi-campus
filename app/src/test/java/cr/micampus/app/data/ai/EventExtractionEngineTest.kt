@@ -98,12 +98,15 @@ class EventExtractionEngineTest {
         assertEquals(0, cloud.calls)
     }
 
-    @Test fun grantedCloudParsesAndDedupesChunks() = runBlocking {
+    @Test fun grantedCloudCollapsesIdenticalChunkExtractions() = runBlocking {
+        // TokenChunker overlaps chunks, so the same event is routinely re-extracted from adjacent
+        // chunks. Identical extractions (same stable id) collapse to a single draft instead of
+        // surfacing as two "possible duplicate" copies.
         val cloud = Cloud("{\"events\":[{\"title\":\"Clase\"}]}")
         val result = EventExtractionEngine(local = Local(NanoCapability.UNAVAILABLE), cloud = cloud, consent = Consent(ConsentDecision.GRANTED)).extract("x", listOf("a", "b"))
         assertTrue(result is ExtractionOutcome.Drafts)
         assertEquals(2, cloud.calls)
-        assertTrue((result as ExtractionOutcome.Drafts).drafts.all { ImportIssue.DUPLICATE in it.issues })
+        assertEquals(1, (result as ExtractionOutcome.Drafts).drafts.size)
     }
 
     @Test fun generatedDraftMatchingExistingEventIsFlagged() = runBlocking {
@@ -116,6 +119,43 @@ class EventExtractionEngineTest {
         ).extract("x", listOf("a"), existing)
 
         assertTrue(ImportIssue.DUPLICATE in (result as ExtractionOutcome.Drafts).drafts.single().issues)
+    }
+
+    @Test fun syllabusPiecesMergeAcrossChunks() = runBlocking {
+        val chunk1 = "{\"course\":{\"code\":\"EIF200\",\"name\":\"Fundamentos\",\"institution\":\"UNA\"},\"groups\":[{\"label\":\"01\",\"days\":[\"LUNES\",\"JUEVES\"],\"start\":\"08:00\",\"end\":\"09:40\"}],\"events\":[]}"
+        val chunk2 = "{\"weeks\":[{\"week\":1,\"from\":\"2025-02-17\",\"to\":\"2025-02-23\",\"topic\":\"Introducción\"}],\"holidays\":[{\"date\":\"2025-04-11\"}],\"events\":[{\"title\":\"Prueba de ejecución 1\",\"date\":\"2025-04-06\",\"start\":\"09:00\",\"category\":\"EXAM\"}]}"
+        var call = 0
+        val cloud = Cloud { CloudResult.Success(if (call++ == 0) chunk1 else chunk2) }
+        val result = EventExtractionEngine(local = Local(NanoCapability.UNAVAILABLE), cloud = cloud, consent = Consent(ConsentDecision.GRANTED))
+            .extract("x", listOf("a", "b")) as ExtractionOutcome.Drafts
+
+        val syllabus = requireNotNull(result.syllabus)
+        assertEquals("EIF200", syllabus.course?.code)
+        assertEquals(1, syllabus.groups.size)
+        assertEquals(1, syllabus.weeks.size)
+        assertTrue(syllabus.canExpandClasses)
+        assertEquals("Prueba de ejecución 1", result.drafts.single().title)
+    }
+
+    @Test fun assumedInstitutionOverridesAiOutputAndReachesPrompt() = runBlocking {
+        val prompts = mutableListOf<String>()
+        val cloud = Cloud { prompt ->
+            prompts += prompt
+            CloudResult.Success("{\"course\":{\"institution\":\"UCR\"},\"events\":[{\"title\":\"Examen\",\"institution\":\"UCR\"}]}")
+        }
+        val result = EventExtractionEngine(local = Local(NanoCapability.UNAVAILABLE), cloud = cloud, consent = Consent(ConsentDecision.GRANTED))
+            .extract("x", listOf("a"), assumedInstitution = cr.micampus.app.core.model.Institution.UNA) as ExtractionOutcome.Drafts
+
+        assertEquals(cr.micampus.app.core.model.Institution.UNA, result.drafts.single().institution)
+        assertEquals(cr.micampus.app.core.model.Institution.UNA, result.syllabus?.institution)
+        assertTrue(prompts.single().contains("UNA"))
+    }
+
+    @Test fun syllabusWithoutDatedEventsStillReturnsDrafts() = runBlocking {
+        val json = "{\"groups\":[{\"label\":\"01\",\"days\":[\"LUNES\"],\"start\":\"08:00\",\"end\":\"09:40\"}],\"weeks\":[{\"week\":1,\"from\":\"2025-02-17\",\"to\":\"2025-02-23\",\"topic\":\"Intro\"}],\"events\":[]}"
+        val result = EventExtractionEngine(local = Local(NanoCapability.UNAVAILABLE), cloud = Cloud(json), consent = Consent(ConsentDecision.GRANTED)).extract("x", listOf("a"))
+        assertTrue(result is ExtractionOutcome.Drafts)
+        assertTrue((result as ExtractionOutcome.Drafts).syllabus?.canExpandClasses == true)
     }
 
     @Test fun nanoPreflightReservesOutputTokens() {

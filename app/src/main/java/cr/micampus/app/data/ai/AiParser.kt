@@ -14,11 +14,74 @@ import java.time.LocalTime
 data class AiParseResult(val events: List<CampusEvent>, val warnings: List<String>, val usedCloud: Boolean, val drafts: List<CalendarEventDraft> = emptyList())
 interface AiScheduleParser { fun parseStrictJson(json: String): AiParseResult }
 
+data class SyllabusParse(val syllabus: ExtractedSyllabus, val drafts: List<CalendarEventDraft>)
+
+object SyllabusPrompt {
+    const val RULES =
+        "Analiza el documento de un curso universitario (carta al estudiante, programa o cronograma). Extrae: " +
+            "(1) course: nombre, código (p. ej. EIF200), institution (UCR o UNA) y period; " +
+            "(2) groups: cada grupo de la tabla de horario del curso, con label, days como nombres completos en mayúsculas (LUNES, MARTES, MIERCOLES, JUEVES, VIERNES, SABADO, DOMINGO), start y end en formato HH:MM de 24 horas, e instructor; " +
+            "(3) weeks: cada fila del cronograma semanal con week, from y to (AAAA-MM-DD) y topic con el contenido o tema que se enseña esa semana; " +
+            "(4) holidays: feriados y días sin lecciones, un elemento por fecha (incluye cada día de Semana Santa). " +
+            "Si el tema de una semana menciona un feriado en una fecha (p. ej. \"Viernes 11 de abril: Feriado\"), agrega esa fecha aquí y deja el topic solo con el contenido académico. Cada holiday con date y title; " +
+            "(5) events: SOLO eventos con fecha propia: exámenes, pruebas, quices, tareas y entregas, con category (CLASS, EXAM, QUIZ, TAREA, ACTIVITY u OTHER). No incluyas las clases regulares en events. " +
+            "Nunca inventes valores; usa null cuando falten. Conserva el texto original de fechas ambiguas y evidencia breve con su página."
+    const val SHAPE =
+        "Devuelve SOLO JSON con la forma {course:{name,code,institution,period}," +
+            "groups:[{label,days,start,end,instructor}],weeks:[{week,from,to,topic}],holidays:[{date,title}]," +
+            "events:[{date,start,end,originalDateText,title,category,institution,location,courseHint,sourcePage,evidence,ambiguousDate,inferredYear}]}. "
+    fun institutionLine(institution: Institution?): String =
+        institution?.let { "El estudiante solo pertenece a la institución ${it.name}; asume que todo el documento corresponde a ${it.name}.\n" }.orEmpty()
+}
+
 class StrictJsonAiParser : AiScheduleParser {
     override fun parseStrictJson(json: String): AiParseResult = runCatching {
         val drafts = parseDrafts(json)
         AiParseResult(emptyList(), listOf("Borrador estructurado pendiente de confirmación"), false, drafts)
     }.getOrElse { AiParseResult(emptyList(), listOf("Respuesta de IA inválida"), false) }
+
+    fun parseSyllabus(json: String, now: LocalDate = LocalDate.now()): SyllabusParse {
+        val root = JsonParser.parseString(json).asJsonObject
+        fun JsonObject.string(name: String): String? = get(name)?.takeUnless { it.isJsonNull }?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isString }?.asString
+        fun JsonObject.date(name: String): LocalDate? = string(name)?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+        fun JsonObject.time(name: String): LocalTime? = string(name)?.let { runCatching { LocalTime.parse(it) }.getOrNull() }
+        val course = root.get("course")?.takeIf { it.isJsonObject }?.asJsonObject?.let {
+            Course(code = it.string("code"), name = it.string("name"), instructor = null).takeIf { c -> c.code != null || c.name != null }
+        }
+        val institution = root.get("course")?.takeIf { it.isJsonObject }?.asJsonObject?.string("institution")
+            ?.let { runCatching { Institution.valueOf(it.uppercase()) }.getOrNull() }
+        val groups = root.get("groups")?.takeIf { it.isJsonArray }?.asJsonArray.orEmpty().mapNotNull { element ->
+            val obj = element.takeIf { it.isJsonObject }?.asJsonObject ?: return@mapNotNull null
+            val label = obj.string("label") ?: return@mapNotNull null
+            val days = obj.get("days")?.takeIf { it.isJsonArray }?.asJsonArray.orEmpty()
+                .mapNotNull { day -> day.takeIf { it.isJsonPrimitive }?.asString?.let(::parseSpanishDay) }.toSet()
+            CourseGroup(label = label, days = days, startTime = obj.time("start"), endTime = obj.time("end"), instructor = obj.string("instructor"))
+        }
+        val weeks = root.get("weeks")?.takeIf { it.isJsonArray }?.asJsonArray.orEmpty().mapNotNull { element ->
+            val obj = element.takeIf { it.isJsonObject }?.asJsonObject ?: return@mapNotNull null
+            val index = obj.get("week")?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isNumber }?.asInt
+            SyllabusWeek(index = index, from = obj.date("from"), to = obj.date("to"), topic = obj.string("topic"))
+                .takeIf { it.topic != null || it.from != null }
+        }
+        val holidays = root.get("holidays")?.takeIf { it.isJsonArray }?.asJsonArray.orEmpty().mapNotNull { element ->
+            element.takeIf { it.isJsonObject }?.asJsonObject?.date("date")
+        }
+        val syllabus = ExtractedSyllabus(course = course, institution = institution, groups = groups, weeks = weeks, holidays = holidays)
+        return SyllabusParse(syllabus, parseDrafts(json, now))
+    }
+
+    private fun parseSpanishDay(value: String): java.time.DayOfWeek? = when (value.trim().uppercase().replace('Á', 'A').replace('É', 'E').replace('Í', 'I')) {
+        "LUNES" -> java.time.DayOfWeek.MONDAY
+        "MARTES" -> java.time.DayOfWeek.TUESDAY
+        "MIERCOLES" -> java.time.DayOfWeek.WEDNESDAY
+        "JUEVES" -> java.time.DayOfWeek.THURSDAY
+        "VIERNES" -> java.time.DayOfWeek.FRIDAY
+        "SABADO" -> java.time.DayOfWeek.SATURDAY
+        "DOMINGO" -> java.time.DayOfWeek.SUNDAY
+        else -> null
+    }
+
+    private fun com.google.gson.JsonArray?.orEmpty(): List<com.google.gson.JsonElement> = this?.toList() ?: emptyList()
 
     fun parseDrafts(json: String, now: LocalDate = LocalDate.now()): List<CalendarEventDraft> {
         val root = JsonParser.parseString(json).asJsonObject
@@ -56,7 +119,74 @@ class StrictJsonAiParser : AiScheduleParser {
         }
     }
 
-    private fun stableId(vararg values: String?): String = MessageDigest.getInstance("SHA-256").digest(values.joinToString("|").toByteArray()).joinToString("") { "%02x".format(it) }.take(24)
+    private fun stableId(vararg values: String?): String = stableDraftId(*values)
+}
+
+internal fun stableDraftId(vararg values: String?): String = MessageDigest.getInstance("SHA-256").digest(values.joinToString("|").toByteArray()).joinToString("") { "%02x".format(it) }.take(24)
+
+object ClassSessionExpander {
+    // Whole-week breaks that cancel classes for the entire week (not single-day feriados,
+    // which are handled by the holidays set). A cronograma cell is a break when its meaningful
+    // content is just one of these markers.
+    private val weekBreakMarkers = listOf("semana santa", "receso", "vacaciones")
+    // Trailing announcements a cronograma cell often appends after the real topic: a single-day
+    // feriado, an exam/quiz announcement, or a "<weekday> <day> de <month>" date clause. These are
+    // captured elsewhere (holidays[] / events[]); strip them so they don't pollute the class title.
+    private val trailingAnnouncement = Regex(
+        "(?i)\\s*(" +
+            "(lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bado|domingo)\\s+\\d.*" +
+            "|feriado.*" +
+            "|(prueba de ejecuci[oó]n|examen|quiz|semana santa).*" +
+            ")$",
+    )
+
+    fun expand(syllabus: ExtractedSyllabus, group: CourseGroup, now: LocalDate = LocalDate.now()): List<CalendarEventDraft> {
+        val holidays = syllabus.holidays.toSet()
+        return syllabus.weeks.flatMap { week ->
+            val from = week.from ?: return@flatMap emptyList()
+            val to = week.to ?: return@flatMap emptyList()
+            val rawTopic = week.topic?.trim()?.takeIf { it.isNotBlank() } ?: return@flatMap emptyList()
+            if (isWeekBreak(rawTopic)) return@flatMap emptyList()
+            val topic = cleanTitle(rawTopic)
+            generateSequence(from) { it.plusDays(1) }.takeWhile { !it.isAfter(to) }
+                .filter { it.dayOfWeek in group.days && it !in holidays }
+                .map { date ->
+                    CalendarEventDraft(
+                        id = stableDraftId(topic, date.toString(), group.startTime?.toString(), syllabus.course?.code, group.label),
+                        title = topic,
+                        category = EventCategory.CLASS,
+                        institution = syllabus.institution,
+                        date = date,
+                        startTime = group.startTime,
+                        endTime = group.endTime,
+                        location = null,
+                        course = syllabus.course,
+                        sourcePage = null,
+                        evidence = null,
+                        issues = buildSet {
+                            if (group.startTime == null) add(ImportIssue.MISSING_TIME)
+                            if (date.isBefore(now)) add(ImportIssue.PAST)
+                        },
+                    )
+                }.toList()
+        }
+    }
+
+    // A cell is a whole-week break when, ignoring parentheticals and punctuation, its core text is
+    // essentially one of the break markers (allowing a few trailing words like "no hay lecciones").
+    private fun isWeekBreak(topic: String): Boolean {
+        val core = topic.lowercase()
+            .replace(Regex("\\(.*?\\)"), " ")
+            .replace(Regex("[^a-záéíóúñ ]"), " ")
+            .replace(Regex("\\s+"), " ")
+            .trim()
+        return weekBreakMarkers.any { core == it || core.startsWith("$it ") } && core.split(" ").size <= 5
+    }
+
+    // Strip a trailing feriado/exam/date announcement from the topic; never return blank (keeping the
+    // week matters more than a perfectly clean title).
+    private fun cleanTitle(topic: String): String =
+        topic.replace(trailingAnnouncement, "").trim().trimEnd('.', ',', ';', ':').trim().ifBlank { topic }
 }
 
 object DuplicateDetector {
@@ -109,13 +239,10 @@ class MlKitNanoEngine(private val model: com.google.mlkit.genai.prompt.Generativ
     fun close() = model.close()
 
     private fun localExtractionPrompt(documentChunk: String) =
-        "Devuelve SOLO JSON con la forma " +
-            "{events:[{date,start,end,originalDateText,title,category,institution,location,courseHint,sourcePage,evidence,ambiguousDate,inferredYear}]}. " +
-            "Extrae únicamente eventos académicos. Nunca inventes valores; usa null cuando falten. " +
-            "Conserva el texto original de fechas ambiguas y evidencia breve con su página.\n$documentChunk"
+        SyllabusPrompt.SHAPE + SyllabusPrompt.RULES + "\n" + documentChunk
 
     private companion object {
-        const val MAX_OUTPUT_TOKENS = 1_024
+        const val MAX_OUTPUT_TOKENS = 2_048
     }
 }
 
@@ -154,17 +281,18 @@ object LocalPromptSplitter {
 sealed class CloudResult { data class Success(val text: String) : CloudResult(); data class Failure(val kind: CloudFailure) : CloudResult() }
 enum class CloudFailure { MISSING_KEY, INVALID_KEY, QUOTA, OFFLINE, SERVER, INVALID_RESPONSE }
 interface CloudEventEngine { suspend fun generate(prompt: String): CloudResult }
-sealed class ExtractionOutcome { data class Drafts(val drafts: List<CalendarEventDraft>) : ExtractionOutcome(); data class Manual(val reason: String) : ExtractionOutcome(); data class NeedsDownload(val capability: NanoCapability) : ExtractionOutcome(); data class NeedsConsent(val importId: String) : ExtractionOutcome(); data class CloudFailed(val failure: CloudFailure) : ExtractionOutcome() }
+sealed class ExtractionOutcome { data class Drafts(val drafts: List<CalendarEventDraft>, val syllabus: ExtractedSyllabus? = null) : ExtractionOutcome(); data class Manual(val reason: String) : ExtractionOutcome(); data class NeedsDownload(val capability: NanoCapability) : ExtractionOutcome(); data class NeedsConsent(val importId: String) : ExtractionOutcome(); data class CloudFailed(val failure: CloudFailure) : ExtractionOutcome() }
 
 class EventExtractionEngine(private val parser: StrictJsonAiParser = StrictJsonAiParser(), private val local: LocalEventEngine? = null, private val cloud: CloudEventEngine? = null, private val consent: CloudConsent? = null) {
-    suspend fun extract(importId: String, chunks: List<String>, existing: List<CalendarEventDraft> = emptyList()): ExtractionOutcome {
+    suspend fun extract(importId: String, chunks: List<String>, existing: List<CalendarEventDraft> = emptyList(), assumedInstitution: Institution? = null): ExtractionOutcome {
+        val prompts = chunks.map { SyllabusPrompt.institutionLine(assumedInstitution) + it }
         val engine = local
         if (engine != null) {
             when (val capability = engine.checkCapability()) {
                 NanoCapability.DOWNLOADABLE, NanoCapability.DOWNLOADING -> return ExtractionOutcome.NeedsDownload(capability)
                 NanoCapability.AVAILABLE -> {
-                    extractLocally(chunks, engine)?.takeIf { it.isNotEmpty() }?.let { drafts ->
-                        return ExtractionOutcome.Drafts(DuplicateDetector.mark(drafts, existing))
+                    extractLocally(prompts, engine)?.takeIf { it.drafts.isNotEmpty() || it.syllabus.canExpandClasses }?.let { parse ->
+                        return outcome(parse, existing, assumedInstitution)
                     }
                 }
                 NanoCapability.UNAVAILABLE -> Unit
@@ -176,25 +304,48 @@ class EventExtractionEngine(private val parser: StrictJsonAiParser = StrictJsonA
             ConsentDecision.GRANTED -> Unit
         }
         val cloudEngine = cloud ?: return ExtractionOutcome.Manual("Cloud engine unavailable")
-        val results = chunks.map { cloudEngine.generate(it) }
+        val results = prompts.map { cloudEngine.generate(it) }
         results.filterIsInstance<CloudResult.Failure>().firstOrNull()?.let { return ExtractionOutcome.CloudFailed(it.kind) }
-        val drafts = results.filterIsInstance<CloudResult.Success>().map { result ->
-            runCatching { parser.parseDrafts(result.text) }.getOrNull()
+        val parses = results.filterIsInstance<CloudResult.Success>().map { result ->
+            runCatching { parser.parseSyllabus(result.text) }.getOrNull()
                 ?: return ExtractionOutcome.Manual("Respuesta estructurada inválida")
-        }.flatten()
-        return if (drafts.isEmpty()) ExtractionOutcome.Manual("Respuesta estructurada inválida") else ExtractionOutcome.Drafts(DuplicateDetector.mark(drafts, existing))
+        }
+        val merged = merge(parses)
+        return if (merged.drafts.isEmpty() && !merged.syllabus.canExpandClasses) ExtractionOutcome.Manual("Respuesta estructurada inválida") else outcome(merged, existing, assumedInstitution)
     }
 
-    private suspend fun extractLocally(chunks: List<String>, engine: LocalEventEngine): List<CalendarEventDraft>? {
-        val drafts = mutableListOf<CalendarEventDraft>()
+    private fun outcome(parse: SyllabusParse, existing: List<CalendarEventDraft>, assumedInstitution: Institution?): ExtractionOutcome.Drafts {
+        val syllabus = if (assumedInstitution != null) parse.syllabus.copy(institution = assumedInstitution) else parse.syllabus
+        val drafts = parse.drafts.map { draft -> if (assumedInstitution != null) draft.copy(institution = assumedInstitution) else draft }
+        return ExtractionOutcome.Drafts(DuplicateDetector.mark(drafts, existing), syllabus)
+    }
+
+    private fun merge(parses: List<SyllabusParse>): SyllabusParse = SyllabusParse(
+        syllabus = ExtractedSyllabus(
+            course = parses.firstNotNullOfOrNull { it.syllabus.course },
+            institution = parses.firstNotNullOfOrNull { it.syllabus.institution },
+            groups = parses.flatMap { it.syllabus.groups }.distinctBy { it.label.trim().lowercase() },
+            // Chunks overlap, so the same week is re-extracted with the same index; collapse those.
+            // Weeks that carry no index can't be safely deduped by content, so keep only exact copies.
+            weeks = parses.flatMap { it.syllabus.weeks }.let { all ->
+                val (indexed, unindexed) = all.partition { it.index != null }
+                indexed.distinctBy { it.index } + unindexed.distinct()
+            },
+            holidays = parses.flatMap { it.syllabus.holidays }.distinct(),
+        ),
+        drafts = parses.flatMap { it.drafts }.distinctBy { it.id },
+    )
+
+    private suspend fun extractLocally(chunks: List<String>, engine: LocalEventEngine): SyllabusParse? {
+        val parses = mutableListOf<SyllabusParse>()
         for (chunk in chunks) {
             val responses = generateLocalParts(chunk, engine) ?: return null
             for (response in responses) {
-                val parsed = runCatching { parser.parseDrafts(response) }.getOrNull() ?: return null
-                drafts += parsed
+                val parsed = runCatching { parser.parseSyllabus(response) }.getOrNull() ?: return null
+                parses += parsed
             }
         }
-        return drafts
+        return merge(parses)
     }
 
     private suspend fun generateLocalParts(
@@ -229,11 +380,7 @@ class GeminiClient(private val apiKey: String, val model: String = CLOUD_MODEL) 
             add(JsonObject().apply {
                 add("parts", JsonArray().apply {
                     add(JsonObject().apply {
-                        addProperty(
-                            "text",
-                            "Extrae únicamente eventos académicos. Nunca inventes valores; usa null cuando falten. " +
-                                "Conserva el texto original de fechas ambiguas y evidencia breve con su página.\n$prompt",
-                        )
+                        addProperty("text", SyllabusPrompt.RULES + "\n" + prompt)
                     })
                 })
             })
@@ -248,8 +395,7 @@ class GeminiClient(private val apiKey: String, val model: String = CLOUD_MODEL) 
         if (!structured) {
             getAsJsonArray("contents").first().asJsonObject.getAsJsonArray("parts").first().asJsonObject.addProperty(
                 "text",
-                "Devuelve SOLO JSON con la forma {events:[{date,start,end,originalDateText,title,category,institution,location,courseHint,sourcePage,evidence,ambiguousDate,inferredYear}]}. " +
-                    "Nunca inventes valores; usa null cuando falten.\n$prompt",
+                SyllabusPrompt.SHAPE + SyllabusPrompt.RULES + "\n" + prompt,
             )
         }
     }.toString()
@@ -276,22 +422,55 @@ class GeminiClient(private val apiKey: String, val model: String = CLOUD_MODEL) 
             add("ambiguousDate", JsonObject().apply { addProperty("type", "boolean") })
             add("inferredYear", JsonObject().apply { addProperty("type", "boolean") })
         }
-        val required = properties.keySet()
+        fun objectSchema(fields: JsonObject): JsonObject = JsonObject().apply {
+            addProperty("type", "object")
+            addProperty("additionalProperties", false)
+            add("properties", fields)
+            add("required", JsonArray().apply { fields.keySet().forEach(::add) })
+        }
+        fun arraySchema(items: JsonObject): JsonObject = JsonObject().apply {
+            addProperty("type", "array")
+            add("items", items)
+        }
+        val courseSchema = objectSchema(JsonObject().apply {
+            add("name", nullable("string"))
+            add("code", nullable("string"))
+            add("institution", nullable("string"))
+            add("period", nullable("string"))
+        })
+        val groupSchema = objectSchema(JsonObject().apply {
+            add("label", nullable("string"))
+            add("days", arraySchema(JsonObject().apply {
+                addProperty("type", "string")
+                add("enum", JsonArray().apply { listOf("LUNES", "MARTES", "MIERCOLES", "JUEVES", "VIERNES", "SABADO", "DOMINGO").forEach(::add) })
+            }))
+            add("start", nullable("string", "time"))
+            add("end", nullable("string", "time"))
+            add("instructor", nullable("string"))
+        })
+        val weekSchema = objectSchema(JsonObject().apply {
+            add("week", nullable("integer"))
+            add("from", nullable("string", "date"))
+            add("to", nullable("string", "date"))
+            add("topic", nullable("string"))
+        })
+        val holidaySchema = objectSchema(JsonObject().apply {
+            add("date", nullable("string", "date"))
+            add("title", nullable("string"))
+        })
         return JsonObject().apply {
             addProperty("type", "object")
             addProperty("additionalProperties", false)
             add("properties", JsonObject().apply {
-                add("events", JsonObject().apply {
-                    addProperty("type", "array")
-                    add("items", JsonObject().apply {
-                        addProperty("type", "object")
-                        addProperty("additionalProperties", false)
-                        add("properties", properties)
-                        add("required", JsonArray().apply { required.forEach(::add) })
-                    })
+                add("course", JsonObject().apply {
+                    add("anyOf", JsonArray().apply { add(courseSchema); add(JsonObject().apply { addProperty("type", "null") }) })
                 })
+                add("groups", arraySchema(groupSchema))
+                add("weeks", arraySchema(weekSchema))
+                add("holidays", arraySchema(holidaySchema))
+                add("events", arraySchema(objectSchema(properties)))
             })
-            add("required", JsonArray().apply { add("events") })
+            add("required", JsonArray().apply { listOf("course", "groups", "weeks", "holidays", "events").forEach(::add) })
         }
     }
 

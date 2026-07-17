@@ -8,8 +8,12 @@ import cr.micampus.app.core.model.CampusEvent
 import cr.micampus.app.core.model.EventCategory
 import cr.micampus.app.core.model.EventKind
 import cr.micampus.app.core.model.Course
+import cr.micampus.app.core.model.CourseGroup
+import cr.micampus.app.core.model.ExtractedSyllabus
 import cr.micampus.app.core.model.ImportIssue
 import cr.micampus.app.core.model.Institution
+import cr.micampus.app.data.ai.ClassSessionExpander
+import cr.micampus.app.data.ai.DuplicateDetector
 import cr.micampus.app.core.model.ReminderSettings
 import cr.micampus.app.data.ai.CloudConsent
 import cr.micampus.app.data.ai.CloudFailure
@@ -34,7 +38,7 @@ import kotlinx.coroutines.launch
 import java.time.LocalDateTime
 import java.util.UUID
 
-enum class ImportStage { IDLE, EXTRACTING, NEEDS_NANO, NEEDS_CONSENT, REVIEW, MANUAL, ERROR }
+enum class ImportStage { IDLE, EXTRACTING, NEEDS_NANO, NEEDS_CONSENT, SELECT_GROUP, REVIEW, MANUAL, ERROR }
 
 data class ImporterUiState(
     val stage: ImportStage = ImportStage.IDLE,
@@ -44,6 +48,7 @@ data class ImporterUiState(
     val nanoBytes: Long = 0,
     val importId: String? = null,
     val enabledInstitutions: List<Institution> = Institution.values().toList(),
+    val syllabus: ExtractedSyllabus? = null,
 )
 
 private class PerImportConsent : CloudConsent {
@@ -134,6 +139,8 @@ class ImporterViewModel(
                 category = when (event.kind) {
                     EventKind.CLASS -> EventCategory.CLASS
                     EventKind.EXAM -> EventCategory.EXAM
+                    EventKind.QUIZ -> EventCategory.QUIZ
+                    EventKind.TAREA -> EventCategory.TAREA
                     EventKind.TRANSIT -> EventCategory.TRANSIT
                     EventKind.ACTIVITY -> EventCategory.ACTIVITY
                 },
@@ -147,11 +154,17 @@ class ImporterViewModel(
                 evidence = null,
             )
         }
-        when (val outcome = engine.extract(importId, pendingChunks, state.value.drafts + confirmed)) {
+        val assumedInstitution = state.value.enabledInstitutions.singleOrNull()
+        when (val outcome = engine.extract(importId, pendingChunks, state.value.drafts + confirmed, assumedInstitution)) {
             is ExtractionOutcome.Drafts -> {
                 pendingChunks = emptyList()
                 outcome.drafts.forEach { events.saveDraft(it.toEntity()) }
-                mutableState.value = ImporterUiState(ImportStage.REVIEW, outcome.drafts, importId = importId)
+                val syllabus = outcome.syllabus
+                if (syllabus != null && syllabus.canExpandClasses) {
+                    mutableState.value = ImporterUiState(ImportStage.SELECT_GROUP, outcome.drafts, importId = importId, syllabus = syllabus, enabledInstitutions = state.value.enabledInstitutions)
+                } else {
+                    mutableState.value = ImporterUiState(ImportStage.REVIEW, outcome.drafts, importId = importId, enabledInstitutions = state.value.enabledInstitutions)
+                }
             }
             is ExtractionOutcome.NeedsDownload -> mutableState.update { it.copy(stage = ImportStage.NEEDS_NANO, nanoCapability = outcome.capability, message = "Gemini Nano necesita descargarse en el dispositivo.") }
             is ExtractionOutcome.NeedsConsent -> mutableState.update { it.copy(stage = ImportStage.NEEDS_CONSENT, message = "La nube es opcional. Solo se enviará el texto extraído para esta importación.") }
@@ -196,24 +209,42 @@ class ImporterViewModel(
         viewModelScope.launch { events.deleteDraft(id) }
     }
 
-    fun confirmDraft(id: String) {
-        val draft = state.value.drafts.firstOrNull { it.id == id } ?: return
+    fun selectGroup(group: CourseGroup) {
+        val syllabus = state.value.syllabus ?: return
+        val expanded = DuplicateDetector.mark(ClassSessionExpander.expand(syllabus, group), state.value.drafts)
+        viewModelScope.launch {
+            expanded.forEach { events.saveDraft(it.toEntity()) }
+            mutableState.update {
+                it.copy(
+                    stage = ImportStage.REVIEW,
+                    drafts = expanded + it.drafts,
+                    syllabus = null,
+                    message = if (expanded.isEmpty()) "No se generaron clases para ese grupo" else "Se generaron ${expanded.size} clases con sus temas",
+                )
+            }
+        }
+    }
+
+    fun skipGroupSelection() {
+        mutableState.update { it.copy(stage = ImportStage.REVIEW, syllabus = null) }
+    }
+
+    private fun draftToEvent(draft: CalendarEventDraft): CampusEvent? {
         val title = draft.title?.takeIf(String::isNotBlank)
         val date = draft.date
         val start = draft.startTime
         val end = draft.endTime
         val institution = draft.institution
-        if (title == null || date == null || start == null || end == null || institution == null || !end.isAfter(start)) {
-            mutableState.update { it.copy(message = "Completa título, institución, fecha y un rango horario válido") }
-            return
-        }
-        val event = CampusEvent(
+        if (title == null || date == null || start == null || end == null || institution == null || !end.isAfter(start)) return null
+        return CampusEvent(
             id = draft.id,
             title = title,
             institution = institution,
             kind = when (draft.category) {
                 EventCategory.CLASS -> EventKind.CLASS
                 EventCategory.EXAM -> EventKind.EXAM
+                EventCategory.QUIZ -> EventKind.QUIZ
+                EventCategory.TAREA -> EventKind.TAREA
                 EventCategory.TRANSIT -> EventKind.TRANSIT
                 else -> EventKind.ACTIVITY
             },
@@ -223,15 +254,46 @@ class ImporterViewModel(
             notes = draft.course?.code.orEmpty(),
             source = "importado",
         )
-        viewModelScope.launch {
+    }
+
+    private suspend fun persistConfirmed(confirmed: List<CampusEvent>) {
+        val appSettings = settings.current()
+        confirmed.forEach { event ->
             events.save(event)
-            events.deleteDraft(id)
-            val appSettings = settings.current()
+            events.deleteDraft(event.id)
             reminders.schedule(event, ReminderSettings(enabled = appSettings.remindersEnabled), appSettings.exactReminders)
-            onDataChanged()
+        }
+        onDataChanged()
+    }
+
+    fun confirmDraft(id: String) {
+        val draft = state.value.drafts.firstOrNull { it.id == id } ?: return
+        val event = draftToEvent(draft)
+        if (event == null) {
+            mutableState.update { it.copy(message = "Completa título, institución, fecha y un rango horario válido") }
+            return
+        }
+        viewModelScope.launch {
+            persistConfirmed(listOf(event))
             mutableState.update { current ->
                 val remaining = current.drafts.filterNot { it.id == id }
                 current.copy(stage = if (remaining.isEmpty()) ImportStage.IDLE else ImportStage.REVIEW, drafts = remaining, message = "Evento confirmado")
+            }
+        }
+    }
+
+    fun confirmAllReady() {
+        val ready = state.value.drafts.filter { it.issues.isEmpty() }.mapNotNull(::draftToEvent)
+        if (ready.isEmpty()) {
+            mutableState.update { it.copy(message = "No hay borradores completos sin observaciones para confirmar") }
+            return
+        }
+        viewModelScope.launch {
+            persistConfirmed(ready)
+            val confirmedIds = ready.map { it.id }.toSet()
+            mutableState.update { current ->
+                val remaining = current.drafts.filterNot { it.id in confirmedIds }
+                current.copy(stage = if (remaining.isEmpty()) ImportStage.IDLE else ImportStage.REVIEW, drafts = remaining, message = "${ready.size} eventos confirmados")
             }
         }
     }

@@ -38,6 +38,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import cr.micampus.app.core.designsystem.EmptyState
@@ -84,7 +86,8 @@ fun ImporterScreen(state: ImporterUiState, viewModel: ImporterViewModel, onClose
                 if (state.nanoBytes > 0) Text("${state.nanoBytes} bytes descargados")
             }
             ImportStage.NEEDS_CONSENT -> Column(Modifier.padding(padding)) { LoadingState("Esperando tu decisión") }
-            ImportStage.REVIEW -> DraftReview(state, Modifier.padding(padding), onEdit = { editing = it }, onConfirm = viewModel::confirmDraft, onDelete = viewModel::discardDraft, onAdd = viewModel::addManualDraft)
+            ImportStage.SELECT_GROUP -> GroupPicker(state, Modifier.padding(padding), onSelect = viewModel::selectGroup, onSkip = viewModel::skipGroupSelection)
+            ImportStage.REVIEW -> DraftReview(state, Modifier.padding(padding), onEdit = { editing = it }, onConfirm = viewModel::confirmDraft, onConfirmAll = viewModel::confirmAllReady, onDelete = viewModel::discardDraft, onAdd = viewModel::addManualDraft)
             ImportStage.MANUAL -> Column(Modifier.padding(padding).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 EmptyState("Entrada manual", state.message ?: "Agrega un evento y completa sus datos.")
                 Button(onClick = { viewModel.addManualDraft() }, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Outlined.Add, contentDescription = null); Text(" Agregar evento") }
@@ -99,10 +102,47 @@ fun ImporterScreen(state: ImporterUiState, viewModel: ImporterViewModel, onClose
 private fun ImportStart(modifier: Modifier, onPick: () -> Unit, onManual: () -> Unit) {
     Column(modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.Center) {
         Icon(Icons.Outlined.UploadFile, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-        Text("Convierte un programa de curso en borradores", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-        Text("Primero se intenta texto local y OCR. Nada se confirma automáticamente.", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = 12.dp))
+        Text("Importa tu carta al estudiante", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+        Text(
+            "Sube el PDF que entrega tu profesor: la carta al estudiante, el programa o el cronograma del curso. " +
+                "La app detecta tus clases con el tema de cada día, además de exámenes, quices y tareas, para crear recordatorios con anticipación.",
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(vertical = 12.dp),
+        )
+        Text("Primero se intenta texto local y OCR. Nada se confirma automáticamente.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 12.dp))
         Button(onClick = onPick, modifier = Modifier.fillMaxWidth().height(56.dp), shape = androidx.compose.foundation.shape.RoundedCornerShape(28.dp)) { Text("Seleccionar PDF", style = MaterialTheme.typography.titleMedium) }
         OutlinedButton(onClick = onManual, modifier = Modifier.fillMaxWidth().padding(top = 8.dp).height(52.dp), shape = androidx.compose.foundation.shape.RoundedCornerShape(26.dp)) { Text("Ingresar evento manualmente") }
+    }
+}
+
+@Composable
+private fun GroupPicker(state: ImporterUiState, modifier: Modifier, onSelect: (cr.micampus.app.core.model.CourseGroup) -> Unit, onSkip: () -> Unit) {
+    val syllabus = state.syllabus ?: return
+    val dayLabels = mapOf(
+        java.time.DayOfWeek.MONDAY to "lunes", java.time.DayOfWeek.TUESDAY to "martes", java.time.DayOfWeek.WEDNESDAY to "miércoles",
+        java.time.DayOfWeek.THURSDAY to "jueves", java.time.DayOfWeek.FRIDAY to "viernes", java.time.DayOfWeek.SATURDAY to "sábado", java.time.DayOfWeek.SUNDAY to "domingo",
+    )
+    LazyColumn(modifier.fillMaxSize().padding(horizontal = 20.dp), contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        item {
+            Text("¿Cuál es tu grupo?", style = MaterialTheme.typography.headlineSmall)
+            Text(
+                listOfNotNull(syllabus.course?.name, syllabus.course?.code).joinToString(" · ").ifBlank { "Curso detectado" },
+                style = MaterialTheme.typography.titleMedium,
+            )
+            Text("Elige tu grupo para generar las clases del cronograma con el tema de cada día.", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
+        }
+        items(syllabus.groups, key = { it.label }) { group ->
+            val days = group.days.sorted().joinToString(" y ") { dayLabels[it] ?: it.name }
+            val hours = listOfNotNull(group.startTime?.toString(), group.endTime?.toString()).joinToString("–")
+            ElevatedCard(onClick = { onSelect(group) }, modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Grupo ${group.label}" }) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("Grupo ${group.label}", style = MaterialTheme.typography.titleLarge)
+                    Text(listOf(days, hours).filter(String::isNotBlank).joinToString(" · ").ifBlank { "Horario no detectado" })
+                    group.instructor?.takeIf(String::isNotBlank)?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                }
+            }
+        }
+        item { OutlinedButton(onClick = onSkip, modifier = Modifier.fillMaxWidth().height(48.dp)) { Text("Omitir: solo exámenes y entregas") } }
     }
 }
 
@@ -112,11 +152,15 @@ private fun DraftReview(
     modifier: Modifier,
     onEdit: (CalendarEventDraft) -> Unit,
     onConfirm: (String) -> Unit,
+    onConfirmAll: () -> Unit,
     onDelete: (String) -> Unit,
     onAdd: () -> Unit,
 ) {
     LazyColumn(modifier.fillMaxSize().padding(horizontal = 20.dp), contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item { Text("Revisa antes de confirmar", style = MaterialTheme.typography.headlineSmall); Text("Los campos ambiguos permanecen vacíos o marcados.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        if (state.drafts.count { it.issues.isEmpty() } > 1) {
+            item { Button(onClick = onConfirmAll, modifier = Modifier.fillMaxWidth().height(48.dp)) { Text("Confirmar todos los que están listos (${state.drafts.count { it.issues.isEmpty() }})") } }
+        }
         items(state.drafts, key = { it.id }) { draft ->
             ElevatedCard(onClick = { onEdit(draft) }, modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {

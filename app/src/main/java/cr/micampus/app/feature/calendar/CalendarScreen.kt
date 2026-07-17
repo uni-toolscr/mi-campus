@@ -295,6 +295,8 @@ private fun newEvent(defaultInstitution: Institution): CampusEvent {
 private fun kindLabel(kind: EventKind) = when (kind) {
     EventKind.CLASS -> "Clase"
     EventKind.EXAM -> "Examen"
+    EventKind.QUIZ -> "Quiz"
+    EventKind.TAREA -> "Tarea"
     EventKind.ACTIVITY -> "Actividad"
     EventKind.TRANSIT -> "Transporte"
 }

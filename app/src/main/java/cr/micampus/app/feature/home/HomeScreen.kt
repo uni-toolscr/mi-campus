@@ -57,7 +57,7 @@ fun HomeScreen(state: HomeUiState, onImport: () -> Unit) {
             ) {
                 Icon(Icons.Outlined.UploadFile, contentDescription = null)
                 Spacer(Modifier.width(8.dp))
-                Text("Importar programa o horario PDF", style = MaterialTheme.typography.titleMedium)
+                Text("Importar carta al estudiante (PDF)", style = MaterialTheme.typography.titleMedium)
             }
         }
         if (state.loading) item { LoadingState() }
@@ -65,7 +65,7 @@ fun HomeScreen(state: HomeUiState, onImport: () -> Unit) {
             item { SectionTitle("Próximos eventos") }
             val nextEvent = state.events.firstOrNull()
             if (nextEvent == null) {
-                item { EmptyState("Todavía no hay eventos", "Importa un PDF o crea un evento desde Calendario.") }
+                item { EmptyState("Todavía no hay eventos", "Importa la carta al estudiante o el programa de tu curso en PDF, o crea un evento desde Calendario.") }
             } else {
                 item { HeroEventCard(nextEvent) }
                 if (state.events.size > 1) items(state.events.drop(1), key = CampusEvent::id) { EventCard(it) }
@@ -132,6 +132,8 @@ private fun BusCard(bus: UpcomingDeparture) {
 private fun eventKindLabel(kind: EventKind) = when (kind) {
     EventKind.CLASS -> "Clase"
     EventKind.EXAM -> "Examen"
+    EventKind.QUIZ -> "Quiz"
+    EventKind.TAREA -> "Tarea"
     EventKind.ACTIVITY -> "Actividad"
     EventKind.TRANSIT -> "Transporte"
 }

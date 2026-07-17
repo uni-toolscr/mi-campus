@@ -4,13 +4,24 @@ import java.time.LocalDate
 import java.time.LocalDateTime
 
 enum class Institution { UCR, UNA }
-enum class EventKind { CLASS, EXAM, ACTIVITY, TRANSIT }
-enum class EventCategory { CLASS, EXAM, ACTIVITY, TRANSIT, OTHER }
+enum class EventKind { CLASS, EXAM, QUIZ, TAREA, ACTIVITY, TRANSIT }
+enum class EventCategory { CLASS, EXAM, QUIZ, TAREA, ACTIVITY, TRANSIT, OTHER }
 enum class ThemeMode { SYSTEM, LIGHT, DARK }
 enum class ImportIssue { AMBIGUOUS, AMBIGUOUS_DATE, INFERRED_YEAR, MISSING_DATE, MISSING_TIME, INVALID_RANGE, PAST, DUPLICATE }
 data class Evidence(val sourcePage: Int?, val excerpt: String?)
 data class Course(val code: String?, val name: String?, val instructor: String? = null)
 data class CalendarEventDraft(val id: String, val title: String?, val category: EventCategory?, val institution: Institution?, val date: LocalDate?, val startTime: java.time.LocalTime?, val endTime: java.time.LocalTime?, val location: String?, val course: Course?, val sourcePage: Int?, val evidence: Evidence?, val issues: Set<ImportIssue> = emptySet(), val originalDateText: String? = null)
+data class CourseGroup(val label: String, val days: Set<java.time.DayOfWeek>, val startTime: java.time.LocalTime?, val endTime: java.time.LocalTime?, val instructor: String? = null)
+data class SyllabusWeek(val index: Int?, val from: LocalDate?, val to: LocalDate?, val topic: String?)
+data class ExtractedSyllabus(
+    val course: Course? = null,
+    val institution: Institution? = null,
+    val groups: List<CourseGroup> = emptyList(),
+    val weeks: List<SyllabusWeek> = emptyList(),
+    val holidays: List<LocalDate> = emptyList(),
+) {
+    val canExpandClasses: Boolean get() = groups.isNotEmpty() && weeks.any { it.from != null && it.to != null }
+}
 data class ReminderSettings(val enabled: Boolean = true, val offsetsMinutes: List<Long> = listOf(1440L, 60L), val allDayOffsetsMinutes: List<Long> = listOf(1440L))
 enum class ServiceStatus { VERIFIED, EXPIRED, NO_SERVICE, UNKNOWN }
 data class CampusEvent(

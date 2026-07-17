@@ -17,6 +17,16 @@ class GeminiCloudEngineTest {
         assertEquals("object", config.getAsJsonObject("responseJsonSchema").get("type").asString)
         assertEquals("LOW", config.getAsJsonObject("thinkingConfig").get("thinkingLevel").asString)
     }
+    @Test fun structuredSchemaCoversSyllabusSections() {
+        val body = JsonParser.parseString(GeminiClient("secret").requestBody("texto")).asJsonObject
+        val schema = body.getAsJsonObject("generationConfig").getAsJsonObject("responseJsonSchema")
+        val properties = schema.getAsJsonObject("properties")
+        for (section in listOf("course", "groups", "weeks", "holidays", "events")) assertTrue(section, properties.has(section))
+        val prompt = body.getAsJsonArray("contents").first().asJsonObject.getAsJsonArray("parts").first().asJsonObject.get("text").asString
+        assertTrue(prompt.contains("cronograma"))
+        assertTrue(prompt.contains("QUIZ"))
+        assertTrue(prompt.contains("Nunca inventes valores"))
+    }
     @Test fun missingKeyIsTyped() = runBlocking { assertEquals(CloudFailure.MISSING_KEY, (GeminiCloudEngine(Keys(null), Transport(GeminiHttpResponse(200))).generate("x") as CloudResult.Failure).kind) }
     @Test fun invalidQuotaAndServerAreTyped() = runBlocking { assertEquals(CloudFailure.INVALID_KEY, (GeminiCloudEngine(Keys("k"), Transport(GeminiHttpResponse(401))).generate("x") as CloudResult.Failure).kind); assertEquals(CloudFailure.QUOTA, (GeminiCloudEngine(Keys("k"), Transport(GeminiHttpResponse(429))).generate("x") as CloudResult.Failure).kind); assertEquals(CloudFailure.SERVER, (GeminiCloudEngine(Keys("k"), Transport(GeminiHttpResponse(503))).generate("x") as CloudResult.Failure).kind) }
     @Test fun apiKeyInvalidBodyIsTypedWithoutSchemaRetry() = runBlocking {
