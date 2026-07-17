@@ -21,6 +21,7 @@ data class HomeUiState(
     val loading: Boolean = true,
     val events: List<CampusEvent> = emptyList(),
     val buses: List<UpcomingDeparture> = emptyList(),
+    val use12hClock: Boolean = false,
 )
 
 class HomeViewModel(
@@ -35,6 +36,7 @@ class HomeViewModel(
             loading = false,
             events = allEvents.filter { !it.end.isBefore(now) }.take(5),
             buses = nextBuses(appSettings, now),
+            use12hClock = appSettings.use12hClock,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeUiState())
 

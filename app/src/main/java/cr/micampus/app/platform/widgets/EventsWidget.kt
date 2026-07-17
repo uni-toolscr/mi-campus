@@ -25,19 +25,15 @@ import cr.micampus.app.MainActivity
 import cr.micampus.app.MiCampusApplication
 import cr.micampus.app.R
 import cr.micampus.app.core.model.CampusEvent
+import cr.micampus.app.core.designsystem.widgetDateTimeFormatter
 import cr.micampus.app.data.local.EventRepository
 import java.time.Instant
-import java.time.format.DateTimeFormatter
-import java.util.Locale
-
-private val eventDateFormatter: DateTimeFormatter =
-    DateTimeFormatter.ofPattern("EEE d MMM, HH:mm", Locale.forLanguageTag("es-CR"))
-
 class EventsWidget : GlanceAppWidget() {
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val app = context.applicationContext as MiCampusApplication
         val entities = runCatching { app.container.events.futureEntities(Instant.now()) }.getOrDefault(emptyList())
         val events = entities.take(5).map { EventRepository.toDomain(it) }
+        val use12h = runCatching { app.container.settings.current().use12hClock }.getOrDefault(false)
         val title = context.getString(R.string.widget_events_label)
         val emptyLabel = context.getString(R.string.widget_events_empty)
 
@@ -65,7 +61,7 @@ class EventsWidget : GlanceAppWidget() {
                             modifier = GlanceModifier.padding(top = 8.dp),
                         )
                     } else {
-                        events.forEach { event -> EventRow(event) }
+                        events.forEach { event -> EventRow(event, use12h) }
                     }
                 }
             }
@@ -74,7 +70,7 @@ class EventsWidget : GlanceAppWidget() {
 }
 
 @Composable
-private fun EventRow(event: CampusEvent) {
+private fun EventRow(event: CampusEvent, use12h: Boolean) {
     Column(modifier = GlanceModifier.fillMaxWidth().padding(top = 6.dp)) {
         Text(
             text = event.title,
@@ -85,7 +81,7 @@ private fun EventRow(event: CampusEvent) {
             ),
         )
         Text(
-            text = "${event.start.format(eventDateFormatter)} · ${event.institution.name}",
+            text = "${event.start.format(widgetDateTimeFormatter(use12h))} · ${event.institution.name}",
             style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant),
         )
     }

@@ -24,12 +24,12 @@ object SyllabusPrompt {
             "(3) weeks: cada fila del cronograma semanal con week, from y to (AAAA-MM-DD) y topic con el contenido o tema que se enseña esa semana; " +
             "(4) holidays: feriados y días sin lecciones, un elemento por fecha (incluye cada día de Semana Santa). " +
             "Si el tema de una semana menciona un feriado en una fecha (p. ej. \"Viernes 11 de abril: Feriado\"), agrega esa fecha aquí y deja el topic solo con el contenido académico. Cada holiday con date y title; " +
-            "(5) events: SOLO eventos con fecha propia: exámenes, pruebas, quices, tareas y entregas, con category (CLASS, EXAM, QUIZ, TAREA, ACTIVITY u OTHER). No incluyas las clases regulares en events. " +
+            "(5) events: SOLO eventos con fecha propia: exámenes, pruebas, quices, tareas y entregas, con category (CLASS, EXAM, QUIZ, TAREA, ACTIVITY u OTHER). No incluyas las clases regulares en events. Para cada evento usa title corto (nombre breve del evento) y description con el detalle si existe. " +
             "Nunca inventes valores; usa null cuando falten. Conserva el texto original de fechas ambiguas y evidencia breve con su página."
     const val SHAPE =
         "Devuelve SOLO JSON con la forma {course:{name,code,institution,period}," +
             "groups:[{label,days,start,end,instructor}],weeks:[{week,from,to,topic}],holidays:[{date,title}]," +
-            "events:[{date,start,end,originalDateText,title,category,institution,location,courseHint,sourcePage,evidence,ambiguousDate,inferredYear}]}. "
+            "events:[{date,start,end,originalDateText,title,description,category,institution,location,courseHint,sourcePage,evidence,ambiguousDate,inferredYear}]}. "
     fun institutionLine(institution: Institution?): String =
         institution?.let { "El estudiante solo pertenece a la institución ${it.name}; asume que todo el documento corresponde a ${it.name}.\n" }.orEmpty()
 }
@@ -114,7 +114,8 @@ class StrictJsonAiParser : AiScheduleParser {
                 institution = string("institution")?.let { runCatching { Institution.valueOf(it.uppercase()) }.getOrNull() },
                 date = date, startTime = start, endTime = end, location = string("location"),
                 course = courseHint?.let { Course(it, null) }, sourcePage = sourcePage,
-                evidence = Evidence(sourcePage, string("evidence")), issues = issues, originalDateText = originalDate
+                evidence = Evidence(sourcePage, string("evidence")), issues = issues, originalDateText = originalDate,
+                description = string("description"),
             )
         }
     }
@@ -148,12 +149,19 @@ object ClassSessionExpander {
             val rawTopic = week.topic?.trim()?.takeIf { it.isNotBlank() } ?: return@flatMap emptyList()
             if (isWeekBreak(rawTopic)) return@flatMap emptyList()
             val topic = cleanTitle(rawTopic)
+            val courseDisplayName = listOfNotNull(syllabus.course?.name, syllabus.course?.code)
+                .map(String::trim)
+                .filter(String::isNotBlank)
+                .joinToString(" · ")
+            val courseTitle = courseDisplayName.ifBlank { topic }
+            val description = topic.takeIf { courseDisplayName.isNotBlank() }
             generateSequence(from) { it.plusDays(1) }.takeWhile { !it.isAfter(to) }
                 .filter { it.dayOfWeek in group.days && it !in holidays }
                 .map { date ->
                     CalendarEventDraft(
                         id = stableDraftId(topic, date.toString(), group.startTime?.toString(), syllabus.course?.code, group.label),
-                        title = topic,
+                        title = courseTitle,
+                        description = description,
                         category = EventCategory.CLASS,
                         institution = syllabus.institution,
                         date = date,
@@ -187,6 +195,64 @@ object ClassSessionExpander {
     // week matters more than a perfectly clean title).
     private fun cleanTitle(topic: String): String =
         topic.replace(trailingAnnouncement, "").trim().trimEnd('.', ',', ';', ':').trim().ifBlank { topic }
+}
+
+object ScheduleTimeAutofill {
+    fun fill(drafts: List<CalendarEventDraft>, schedule: List<CalendarEventDraft>): List<CalendarEventDraft> =
+        fill(drafts, schedule, emptyList(), null)
+
+    fun fill(drafts: List<CalendarEventDraft>, groups: List<CourseGroup>, course: Course?): List<CalendarEventDraft> =
+        fill(drafts, emptyList(), groups, course)
+
+    fun fill(
+        drafts: List<CalendarEventDraft>,
+        schedule: List<CalendarEventDraft>,
+        groups: List<CourseGroup>,
+        course: Course?,
+    ): List<CalendarEventDraft> = drafts.map { draft ->
+        val scheduleSlots = schedule.filter { entry ->
+            entry.startTime != null && entry.endTime != null &&
+                entry.date?.dayOfWeek == draft.date?.dayOfWeek && matches(draft, entry.title, entry.course)
+        }.map { it.startTime!! to it.endTime!! }
+        val groupSlots = groups.filter { group ->
+            group.startTime != null && group.endTime != null &&
+                draft.date?.dayOfWeek in group.days && matches(draft, courseDisplayName(course), course)
+        }.map { it.startTime!! to it.endTime!! }
+        fillIfUnique(draft, (scheduleSlots + groupSlots).distinct())
+    }
+
+    private fun fillIfUnique(draft: CalendarEventDraft, slots: List<Pair<LocalTime, LocalTime>>): CalendarEventDraft {
+        if (ImportIssue.MISSING_TIME !in draft.issues || draft.date == null || slots.size != 1) return draft
+        val (start, end) = slots.single()
+        val issues = draft.issues - ImportIssue.MISSING_TIME
+        return draft.copy(
+            startTime = start,
+            endTime = end,
+            issues = (if (end.isAfter(start)) issues - ImportIssue.INVALID_RANGE else issues) + ImportIssue.INFERRED_TIME,
+        )
+    }
+
+    private fun matches(draft: CalendarEventDraft, entryTitle: String?, entryCourse: Course?): Boolean {
+        val draftCode = draft.course?.code?.trim()?.takeIf(String::isNotBlank)
+        val entryCode = entryCourse?.code?.trim()?.takeIf(String::isNotBlank)
+        if (draftCode != null && entryCode != null) return draftCode.equals(entryCode, ignoreCase = true)
+        val draftNames = listOf(draft.title, draft.course?.name)
+        val entryNames = listOf(entryTitle, entryCourse?.code, entryCourse?.name)
+        return draftNames.any { left -> entryNames.any { right -> containsEither(left, right) } }
+    }
+
+    private fun courseDisplayName(course: Course?): String? =
+        listOfNotNull(course?.name, course?.code).map(String::trim).filter(String::isNotBlank).joinToString(" · ").takeIf(String::isNotBlank)
+
+    private fun containsEither(left: String?, right: String?): Boolean {
+        val normalizedLeft = normalize(left)
+        val normalizedRight = normalize(right)
+        return normalizedLeft.isNotBlank() && normalizedRight.isNotBlank() &&
+            (normalizedLeft.contains(normalizedRight) || normalizedRight.contains(normalizedLeft))
+    }
+
+    private fun normalize(value: String?): String = value.orEmpty().trim().lowercase()
+        .replace('á', 'a').replace('é', 'e').replace('í', 'i').replace('ó', 'o').replace('ú', 'u')
 }
 
 object DuplicateDetector {
@@ -413,6 +479,7 @@ class GeminiClient(private val apiKey: String, val model: String = CLOUD_MODEL) 
             add("end", nullable("string", "time"))
             add("originalDateText", nullable("string"))
             add("title", nullable("string"))
+            add("description", nullable("string"))
             add("category", nullable("string"))
             add("institution", nullable("string"))
             add("location", nullable("string"))

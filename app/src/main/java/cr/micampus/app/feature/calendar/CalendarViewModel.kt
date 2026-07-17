@@ -21,7 +21,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.time.YearMonth
 
-enum class CalendarPresentation { MONTH, AGENDA }
+enum class CalendarPresentation { MONTH, AGENDA, HORARIO }
 
 data class CalendarFilters(
     val institution: Institution? = null,
@@ -38,6 +38,7 @@ data class CalendarUiState(
     val message: String? = null,
     val confirmationPending: Boolean = false,
     val enabledInstitutions: List<Institution> = Institution.values().toList(),
+    val use12hClock: Boolean = false,
 ) {
     /** Sensible default institution for a brand-new event: the single enabled one, or UCR when both/neither are set. */
     val defaultInstitution: Institution get() = enabledInstitutions.singleOrNull() ?: Institution.UCR
@@ -61,9 +62,10 @@ class CalendarViewModel(
             events = events.filter { event ->
                 (control.filters.institution == null || event.institution == control.filters.institution) &&
                     (control.filters.kind == null || event.kind == control.filters.kind) &&
-                    (control.filters.courseQuery.isBlank() || event.title.contains(control.filters.courseQuery, true) || event.notes.contains(control.filters.courseQuery, true))
+                    (control.filters.courseQuery.isBlank() || event.title.contains(control.filters.courseQuery, true) || event.notes.contains(control.filters.courseQuery, true) || event.courseCode.orEmpty().contains(control.filters.courseQuery, true))
             },
             enabledInstitutions = enabled,
+            use12hClock = appSettings.use12hClock,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), CalendarUiState())
 

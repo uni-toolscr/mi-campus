@@ -7,10 +7,10 @@ enum class Institution { UCR, UNA }
 enum class EventKind { CLASS, EXAM, QUIZ, TAREA, ACTIVITY, TRANSIT }
 enum class EventCategory { CLASS, EXAM, QUIZ, TAREA, ACTIVITY, TRANSIT, OTHER }
 enum class ThemeMode { SYSTEM, LIGHT, DARK }
-enum class ImportIssue { AMBIGUOUS, AMBIGUOUS_DATE, INFERRED_YEAR, MISSING_DATE, MISSING_TIME, INVALID_RANGE, PAST, DUPLICATE }
+enum class ImportIssue { AMBIGUOUS, AMBIGUOUS_DATE, INFERRED_YEAR, INFERRED_TIME, MISSING_DATE, MISSING_TIME, INVALID_RANGE, PAST, DUPLICATE }
 data class Evidence(val sourcePage: Int?, val excerpt: String?)
 data class Course(val code: String?, val name: String?, val instructor: String? = null)
-data class CalendarEventDraft(val id: String, val title: String?, val category: EventCategory?, val institution: Institution?, val date: LocalDate?, val startTime: java.time.LocalTime?, val endTime: java.time.LocalTime?, val location: String?, val course: Course?, val sourcePage: Int?, val evidence: Evidence?, val issues: Set<ImportIssue> = emptySet(), val originalDateText: String? = null)
+data class CalendarEventDraft(val id: String, val title: String?, val category: EventCategory?, val institution: Institution?, val date: LocalDate?, val startTime: java.time.LocalTime?, val endTime: java.time.LocalTime?, val location: String?, val course: Course?, val sourcePage: Int?, val evidence: Evidence?, val issues: Set<ImportIssue> = emptySet(), val originalDateText: String? = null, val description: String? = null)
 data class CourseGroup(val label: String, val days: Set<java.time.DayOfWeek>, val startTime: java.time.LocalTime?, val endTime: java.time.LocalTime?, val instructor: String? = null)
 data class SyllabusWeek(val index: Int?, val from: LocalDate?, val to: LocalDate?, val topic: String?)
 data class ExtractedSyllabus(
@@ -35,6 +35,7 @@ data class CampusEvent(
     val notes: String = "",
     val source: String = "local",
     val allDay: Boolean = false,
+    val courseCode: String? = null,
 )
 data class TransportDirection(val id: String, val from: String, val to: String, val weekdays: List<String>, val saturday: List<String> = emptyList())
 data class TransportDataset(

@@ -44,6 +44,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import cr.micampus.app.core.designsystem.EmptyState
 import cr.micampus.app.core.designsystem.LoadingState
+import cr.micampus.app.core.designsystem.timeFormatter
 import cr.micampus.app.core.model.CalendarEventDraft
 import cr.micampus.app.core.model.Course
 import cr.micampus.app.core.model.EventCategory
@@ -118,6 +119,7 @@ private fun ImportStart(modifier: Modifier, onPick: () -> Unit, onManual: () -> 
 @Composable
 private fun GroupPicker(state: ImporterUiState, modifier: Modifier, onSelect: (cr.micampus.app.core.model.CourseGroup) -> Unit, onSkip: () -> Unit) {
     val syllabus = state.syllabus ?: return
+    val formatter = timeFormatter(state.use12hClock)
     val dayLabels = mapOf(
         java.time.DayOfWeek.MONDAY to "lunes", java.time.DayOfWeek.TUESDAY to "martes", java.time.DayOfWeek.WEDNESDAY to "miércoles",
         java.time.DayOfWeek.THURSDAY to "jueves", java.time.DayOfWeek.FRIDAY to "viernes", java.time.DayOfWeek.SATURDAY to "sábado", java.time.DayOfWeek.SUNDAY to "domingo",
@@ -133,7 +135,7 @@ private fun GroupPicker(state: ImporterUiState, modifier: Modifier, onSelect: (c
         }
         items(syllabus.groups, key = { it.label }) { group ->
             val days = group.days.sorted().joinToString(" y ") { dayLabels[it] ?: it.name }
-            val hours = listOfNotNull(group.startTime?.toString(), group.endTime?.toString()).joinToString("–")
+            val hours = listOfNotNull(group.startTime?.format(formatter), group.endTime?.format(formatter)).joinToString("–")
             ElevatedCard(onClick = { onSelect(group) }, modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Grupo ${group.label}" }) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text("Grupo ${group.label}", style = MaterialTheme.typography.titleLarge)
@@ -156,6 +158,7 @@ private fun DraftReview(
     onDelete: (String) -> Unit,
     onAdd: () -> Unit,
 ) {
+    val formatter = timeFormatter(state.use12hClock)
     LazyColumn(modifier.fillMaxSize().padding(horizontal = 20.dp), contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item { Text("Revisa antes de confirmar", style = MaterialTheme.typography.headlineSmall); Text("Los campos ambiguos permanecen vacíos o marcados.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
         if (state.drafts.count { it.issues.isEmpty() } > 1) {
@@ -165,7 +168,9 @@ private fun DraftReview(
             ElevatedCard(onClick = { onEdit(draft) }, modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(draft.title ?: "Sin título", style = MaterialTheme.typography.titleLarge)
-                    Text(listOfNotNull(draft.date?.toString(), draft.startTime?.toString(), draft.location).joinToString(" · ").ifBlank { "Faltan fecha y hora" })
+                    val hours = listOfNotNull(draft.startTime?.format(formatter), draft.endTime?.format(formatter)).joinToString("–")
+                    Text(listOfNotNull(draft.date?.toString(), hours.takeIf(String::isNotBlank), draft.location).joinToString(" · ").ifBlank { "Faltan fecha y hora" })
+                    draft.description?.takeIf(String::isNotBlank)?.let { Text(it, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                     if (draft.issues.isNotEmpty()) Text("Revisar: ${draft.issues.joinToString { issueLabel(it) }}", color = MaterialTheme.colorScheme.error)
                     draft.evidence?.excerpt?.takeIf(String::isNotBlank)?.let { Text("Página ${draft.sourcePage ?: "?"}: $it", style = MaterialTheme.typography.bodySmall) }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
@@ -189,6 +194,7 @@ private fun DraftEditor(draft: CalendarEventDraft, enabledInstitutions: List<Ins
     var end by remember(draft.id) { mutableStateOf(draft.endTime?.toString().orEmpty()) }
     var location by remember(draft.id) { mutableStateOf(draft.location.orEmpty()) }
     var course by remember(draft.id) { mutableStateOf(draft.course?.code.orEmpty()) }
+    var description by remember(draft.id) { mutableStateOf(draft.description.orEmpty()) }
     var institution by remember(draft.id) { mutableStateOf(draft.institution) }
     var category by remember(draft.id) { mutableStateOf(draft.category ?: EventCategory.OTHER) }
     var institutionMenu by remember { mutableStateOf(false) }
@@ -216,6 +222,7 @@ private fun DraftEditor(draft: CalendarEventDraft, enabledInstitutions: List<Ins
                 item { OutlinedTextField(end, { end = it }, label = { Text("Fin (HH:MM)") }, isError = end.isNotBlank() && (parsedEnd == null || (parsedStart != null && !parsedEnd!!.isAfter(parsedStart))), modifier = Modifier.fillMaxWidth()) }
                 item { OutlinedTextField(location, { location = it }, label = { Text("Lugar") }, modifier = Modifier.fillMaxWidth()) }
                 item { OutlinedTextField(course, { course = it }, label = { Text("Curso") }, modifier = Modifier.fillMaxWidth()) }
+                item { OutlinedTextField(description, { description = it }, label = { Text("Descripción") }, minLines = 3, modifier = Modifier.fillMaxWidth()) }
             }
         },
         confirmButton = {
@@ -226,7 +233,7 @@ private fun DraftEditor(draft: CalendarEventDraft, enabledInstitutions: List<Ins
                     if (parsedStart == null) add(ImportIssue.MISSING_TIME)
                     if (parsedStart != null && parsedEnd != null && !parsedEnd!!.isAfter(parsedStart)) add(ImportIssue.INVALID_RANGE)
                 }
-                onSave(draft.copy(title = title.ifBlank { null }, institution = institution, category = category, date = parsedDate, startTime = parsedStart, endTime = parsedEnd, location = location.ifBlank { null }, course = course.ifBlank { null }?.let { Course(it, null) }, issues = issues))
+                onSave(draft.copy(title = title.ifBlank { null }, institution = institution, category = category, date = parsedDate, startTime = parsedStart, endTime = parsedEnd, location = location.ifBlank { null }, course = course.ifBlank { null }?.let { Course(it, null) }, description = description.ifBlank { null }, issues = issues))
             }) { Text("Guardar borrador") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } },
@@ -236,6 +243,7 @@ private fun DraftEditor(draft: CalendarEventDraft, enabledInstitutions: List<Ins
 private fun issueLabel(issue: ImportIssue) = when (issue) {
     ImportIssue.AMBIGUOUS, ImportIssue.AMBIGUOUS_DATE -> "fecha ambigua"
     ImportIssue.INFERRED_YEAR -> "año inferido"
+    ImportIssue.INFERRED_TIME -> "Hora inferida del horario"
     ImportIssue.MISSING_DATE -> "falta fecha"
     ImportIssue.MISSING_TIME -> "falta hora"
     ImportIssue.INVALID_RANGE -> "rango inválido"

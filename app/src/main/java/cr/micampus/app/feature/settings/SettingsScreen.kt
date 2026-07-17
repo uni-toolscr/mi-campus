@@ -86,6 +86,7 @@ fun SettingsScreen(state: SettingsUiState, viewModel: SettingsViewModel) {
                         )
                     }
                 }
+                SettingSwitchRow("Formato de 12 horas (a. m./p. m.)", state.settings.use12hClock, isLast = true) { viewModel.setUse12hClock(it) }
             }
         }
         item {

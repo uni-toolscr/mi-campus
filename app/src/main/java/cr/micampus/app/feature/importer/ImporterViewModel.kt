@@ -14,6 +14,7 @@ import cr.micampus.app.core.model.ImportIssue
 import cr.micampus.app.core.model.Institution
 import cr.micampus.app.data.ai.ClassSessionExpander
 import cr.micampus.app.data.ai.DuplicateDetector
+import cr.micampus.app.data.ai.ScheduleTimeAutofill
 import cr.micampus.app.core.model.ReminderSettings
 import cr.micampus.app.data.ai.CloudConsent
 import cr.micampus.app.data.ai.CloudFailure
@@ -49,6 +50,7 @@ data class ImporterUiState(
     val importId: String? = null,
     val enabledInstitutions: List<Institution> = Institution.values().toList(),
     val syllabus: ExtractedSyllabus? = null,
+    val use12hClock: Boolean = false,
 )
 
 private class PerImportConsent : CloudConsent {
@@ -78,7 +80,7 @@ class ImporterViewModel(
         viewModelScope.launch {
             events.draftModels.collect { restored ->
                 if (restored.isNotEmpty() && mutableState.value.stage == ImportStage.IDLE) {
-                    mutableState.value = ImporterUiState(ImportStage.REVIEW, restored, "Borradores restaurados")
+                    mutableState.value = ImporterUiState(ImportStage.REVIEW, restored, "Borradores restaurados", use12hClock = mutableState.value.use12hClock)
                 }
             }
         }
@@ -88,29 +90,29 @@ class ImporterViewModel(
                     if (appSettings.ucrEnabled) add(Institution.UCR)
                     if (appSettings.unaEnabled) add(Institution.UNA)
                 }.ifEmpty { listOf(Institution.UCR) }
-                mutableState.update { it.copy(enabledInstitutions = enabled) }
+                mutableState.update { it.copy(enabledInstitutions = enabled, use12hClock = appSettings.use12hClock) }
             }
         }
     }
 
     fun importPdf(uri: Uri) {
         val importId = UUID.randomUUID().toString()
-        mutableState.value = ImporterUiState(ImportStage.EXTRACTING, importId = importId)
+        mutableState.value = ImporterUiState(ImportStage.EXTRACTING, importId = importId, use12hClock = state.value.use12hClock)
         viewModelScope.launch {
             documents.extract(uri).fold(
                 onSuccess = { document ->
                     pendingChunks = chunker.chunk(document.pages)
                     if (pendingChunks.isEmpty()) {
-                        mutableState.value = ImporterUiState(ImportStage.MANUAL, message = "No se encontró texto. Puedes ingresar el evento manualmente.", importId = importId)
+                        mutableState.value = ImporterUiState(ImportStage.MANUAL, message = "No se encontró texto. Puedes ingresar el evento manualmente.", importId = importId, use12hClock = state.value.use12hClock)
                     } else if (!settings.current().aiEnabled) {
                         pendingChunks = emptyList()
-                        mutableState.value = ImporterUiState(ImportStage.MANUAL, message = "La IA opcional está desactivada. Ingresa los eventos manualmente o actívala en Ajustes.", importId = importId)
+                        mutableState.value = ImporterUiState(ImportStage.MANUAL, message = "La IA opcional está desactivada. Ingresa los eventos manualmente o actívala en Ajustes.", importId = importId, use12hClock = state.value.use12hClock)
                     } else process(importId)
                 },
                 onFailure = { error ->
                     pendingChunks = emptyList()
                     val kind = (error as? PdfExtractionException)?.kind?.name ?: "MALFORMED"
-                    mutableState.value = ImporterUiState(ImportStage.MANUAL, message = "No se pudo leer el PDF ($kind). Ingresa los eventos manualmente.", importId = importId)
+                    mutableState.value = ImporterUiState(ImportStage.MANUAL, message = "No se pudo leer el PDF ($kind). Ingresa los eventos manualmente.", importId = importId, use12hClock = state.value.use12hClock)
                 },
             )
         }
@@ -149,7 +151,7 @@ class ImporterViewModel(
                 startTime = event.start.toLocalTime(),
                 endTime = event.end.toLocalTime(),
                 location = event.location,
-                course = event.notes.takeIf(String::isNotBlank)?.let { Course(it, null) },
+                course = event.courseCode?.takeIf(String::isNotBlank)?.let { Course(it, null) },
                 sourcePage = null,
                 evidence = null,
             )
@@ -158,12 +160,18 @@ class ImporterViewModel(
         when (val outcome = engine.extract(importId, pendingChunks, state.value.drafts + confirmed, assumedInstitution)) {
             is ExtractionOutcome.Drafts -> {
                 pendingChunks = emptyList()
-                outcome.drafts.forEach { events.saveDraft(it.toEntity()) }
                 val syllabus = outcome.syllabus
+                val autofilled = ScheduleTimeAutofill.fill(
+                    outcome.drafts,
+                    confirmed,
+                    syllabus?.groups.orEmpty(),
+                    syllabus?.course,
+                )
+                autofilled.forEach { events.saveDraft(it.toEntity()) }
                 if (syllabus != null && syllabus.canExpandClasses) {
-                    mutableState.value = ImporterUiState(ImportStage.SELECT_GROUP, outcome.drafts, importId = importId, syllabus = syllabus, enabledInstitutions = state.value.enabledInstitutions)
+                    mutableState.value = ImporterUiState(ImportStage.SELECT_GROUP, autofilled, importId = importId, syllabus = syllabus, enabledInstitutions = state.value.enabledInstitutions, use12hClock = state.value.use12hClock)
                 } else {
-                    mutableState.value = ImporterUiState(ImportStage.REVIEW, outcome.drafts, importId = importId, enabledInstitutions = state.value.enabledInstitutions)
+                    mutableState.value = ImporterUiState(ImportStage.REVIEW, autofilled, importId = importId, enabledInstitutions = state.value.enabledInstitutions, use12hClock = state.value.use12hClock)
                 }
             }
             is ExtractionOutcome.NeedsDownload -> mutableState.update { it.copy(stage = ImportStage.NEEDS_NANO, nanoCapability = outcome.capability, message = "Gemini Nano necesita descargarse en el dispositivo.") }
@@ -211,13 +219,17 @@ class ImporterViewModel(
 
     fun selectGroup(group: CourseGroup) {
         val syllabus = state.value.syllabus ?: return
-        val expanded = DuplicateDetector.mark(ClassSessionExpander.expand(syllabus, group), state.value.drafts)
+        val existing = state.value.drafts
+        val expanded = DuplicateDetector.mark(ClassSessionExpander.expand(syllabus, group), existing)
+        val autofilled = ScheduleTimeAutofill.fill(existing, listOf(group), syllabus.course)
         viewModelScope.launch {
             expanded.forEach { events.saveDraft(it.toEntity()) }
+            autofilled.zip(existing).filter { (updated, original) -> updated != original }
+                .forEach { (updated, _) -> events.saveDraft(updated.toEntity()) }
             mutableState.update {
                 it.copy(
                     stage = ImportStage.REVIEW,
-                    drafts = expanded + it.drafts,
+                    drafts = expanded + autofilled,
                     syllabus = null,
                     message = if (expanded.isEmpty()) "No se generaron clases para ese grupo" else "Se generaron ${expanded.size} clases con sus temas",
                 )
@@ -251,8 +263,9 @@ class ImporterViewModel(
             start = LocalDateTime.of(date, start),
             end = LocalDateTime.of(date, end),
             location = draft.location.orEmpty(),
-            notes = draft.course?.code.orEmpty(),
+            notes = draft.description.orEmpty(),
             source = "importado",
+            courseCode = draft.course?.code,
         )
     }
 
@@ -306,7 +319,7 @@ class ImporterViewModel(
     fun cancel() {
         state.value.importId?.let(consent::clear)
         pendingChunks = emptyList()
-        mutableState.value = ImporterUiState()
+        mutableState.value = ImporterUiState(use12hClock = state.value.use12hClock)
     }
 
     override fun onCleared() {

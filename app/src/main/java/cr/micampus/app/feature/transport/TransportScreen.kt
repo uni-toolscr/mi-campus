@@ -34,8 +34,10 @@ import cr.micampus.app.core.designsystem.safeHorizontalInsets
 import cr.micampus.app.core.model.Institution
 import cr.micampus.app.core.model.ServiceStatus
 import java.time.LocalDate
+import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import cr.micampus.app.core.designsystem.timeFormatter
 
 private val dateFormatter = DateTimeFormatter.ofPattern("EEE d MMM", Locale.forLanguageTag("es-CR"))
 
@@ -98,7 +100,7 @@ fun TransportScreen(
         val service = state.service
         if (service?.status == ServiceStatus.VERIFIED) {
             item { Text("Salidas", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold) }
-            item { DepartureGroup(service.departures, nextDeparture = state.nextDeparture?.toLocalTime()?.toString()) }
+            item { DepartureGroup(service.departures, nextDeparture = state.nextDeparture?.toLocalTime()?.toString(), use12h = state.use12hClock) }
         }
         item {
             val dataset = state.dataset
@@ -139,7 +141,7 @@ private fun ServiceHero(state: TransportUiState) {
                 )
             }
             if (service?.status == ServiceStatus.VERIFIED && state.nextDeparture != null) {
-                Text(state.nextDeparture.toLocalTime().toString(), style = MaterialTheme.typography.displayMedium, fontWeight = FontWeight.Bold)
+                Text(state.nextDeparture.toLocalTime().format(timeFormatter(state.use12hClock)), style = MaterialTheme.typography.displayMedium, fontWeight = FontWeight.Bold)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Icon(Icons.Outlined.Schedule, contentDescription = null)
                     Text("En ${state.minutesUntil} min · próxima salida", fontWeight = FontWeight.SemiBold)
@@ -156,7 +158,7 @@ private fun ServiceHero(state: TransportUiState) {
 }
 
 @Composable
-private fun DepartureGroup(departures: List<String>, nextDeparture: String?) {
+private fun DepartureGroup(departures: List<String>, nextDeparture: String?, use12h: Boolean) {
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
         departures.forEachIndexed { index, departure ->
             val isNext = departure == nextDeparture
@@ -173,7 +175,7 @@ private fun DepartureGroup(departures: List<String>, nextDeparture: String?) {
                     Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
-                    Text(departure, style = MaterialTheme.typography.titleMedium)
+                    Text(LocalTime.parse(departure).format(timeFormatter(use12h)), style = MaterialTheme.typography.titleMedium)
                     if (isNext) {
                         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                             Icon(Icons.Outlined.Check, contentDescription = null, tint = MaterialTheme.colorScheme.onTertiaryContainer)

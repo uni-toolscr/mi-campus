@@ -136,11 +136,11 @@ fun CalendarScreen(state: CalendarUiState, viewModel: CalendarViewModel, expande
             if (expanded) {
                 Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
                     MonthPanel(state.month, state.events, viewModel::setMonth, Modifier.weight(0.8f).fillMaxHeight())
-                    Agenda(state, onEvent = { editor = it }, modifier = Modifier.weight(1.2f))
+                    if (state.presentation == CalendarPresentation.HORARIO) HorarioPanel(state.events, state.use12hClock, { editor = it }, Modifier.weight(1.2f)) else Agenda(state, onEvent = { editor = it }, modifier = Modifier.weight(1.2f))
                 }
             } else if (state.presentation == CalendarPresentation.MONTH) {
                 MonthPanel(state.month, state.events, viewModel::setMonth, Modifier.weight(1f))
-            } else Agenda(state, onEvent = { editor = it }, modifier = Modifier.weight(1f))
+            } else if (state.presentation == CalendarPresentation.HORARIO) HorarioPanel(state.events, state.use12hClock, { editor = it }, Modifier.weight(1f)) else Agenda(state, onEvent = { editor = it }, modifier = Modifier.weight(1f))
             OutlinedButton(
                 onClick = { permissionLauncher.launch(arrayOf(Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR)) },
                 modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
@@ -162,7 +162,7 @@ private fun CalendarControls(state: CalendarUiState, viewModel: CalendarViewMode
                     selected = state.presentation == mode,
                     onClick = { viewModel.setPresentation(mode) },
                     shape = SegmentedButtonDefaults.itemShape(index = index, count = CalendarPresentation.values().size),
-                    label = { Text(if (mode == CalendarPresentation.MONTH) "Mes" else "Agenda") },
+                    label = { Text(when (mode) { CalendarPresentation.MONTH -> "Mes"; CalendarPresentation.AGENDA -> "Agenda"; CalendarPresentation.HORARIO -> "Horario" }) },
                 )
             }
         }
@@ -190,7 +190,7 @@ private fun Agenda(state: CalendarUiState, onEvent: (CampusEvent) -> Unit, modif
         state.loading -> LoadingState()
         state.events.isEmpty() -> EmptyState("No hay eventos", "Ajusta los filtros, crea un evento o importa un PDF.")
         else -> LazyColumn(modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            items(state.events, key = CampusEvent::id) { EventCard(it, onClick = { onEvent(it) }) }
+            items(state.events, key = CampusEvent::id) { EventCard(it, onClick = { onEvent(it) }, use12h = state.use12hClock) }
         }
     }
 }
@@ -257,6 +257,7 @@ private fun EventEditorDialog(
     var start by remember(event.id) { mutableStateOf(event.start.toString()) }
     var end by remember(event.id) { mutableStateOf(event.end.toString()) }
     var location by remember(event.id) { mutableStateOf(event.location) }
+    var notes by remember(event.id) { mutableStateOf(event.notes) }
     var institutionMenu by remember { mutableStateOf(false) }
     var kindMenu by remember { mutableStateOf(false) }
     // Offer enabled institutions, plus the event's own institution if it was disabled after being set.
@@ -279,10 +280,11 @@ private fun EventEditorDialog(
                 item { OutlinedTextField(start, { start = it }, label = { Text("Inicio (AAAA-MM-DDTHH:MM)") }, isError = parsedStart == null, modifier = Modifier.fillMaxWidth()) }
                 item { OutlinedTextField(end, { end = it }, label = { Text("Fin (AAAA-MM-DDTHH:MM)") }, isError = parsedEnd == null || (parsedStart != null && !parsedEnd.isAfter(parsedStart)), modifier = Modifier.fillMaxWidth()) }
                 item { OutlinedTextField(location, { location = it }, label = { Text("Lugar") }, modifier = Modifier.fillMaxWidth()) }
+                item { OutlinedTextField(notes, { notes = it }, label = { Text("Descripción") }, minLines = 3, modifier = Modifier.fillMaxWidth()) }
                 if (onDelete != null) item { TextButton(onClick = onDelete) { Text("Eliminar", color = MaterialTheme.colorScheme.error) } }
             }
         },
-        confirmButton = { Button(onClick = { onSave(event.copy(title = title.trim(), institution = institution, kind = kind, start = parsedStart!!, end = parsedEnd!!, location = location.trim())) }, enabled = title.isNotBlank() && parsedStart != null && parsedEnd != null && parsedEnd!!.isAfter(parsedStart)) { Text("Guardar") } },
+        confirmButton = { Button(onClick = { onSave(event.copy(title = title.trim(), institution = institution, kind = kind, start = parsedStart!!, end = parsedEnd!!, location = location.trim(), notes = notes.trim())) }, enabled = title.isNotBlank() && parsedStart != null && parsedEnd != null && parsedEnd!!.isAfter(parsedStart)) { Text("Guardar") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } },
     )
 }

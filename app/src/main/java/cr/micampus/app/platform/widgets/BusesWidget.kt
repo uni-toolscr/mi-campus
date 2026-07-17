@@ -30,18 +30,15 @@ import cr.micampus.app.MainActivity
 import cr.micampus.app.MiCampusApplication
 import cr.micampus.app.R
 import cr.micampus.app.core.model.Institution
+import cr.micampus.app.core.designsystem.timeFormatter
 import cr.micampus.app.data.institution.UpcomingDeparture
 import cr.micampus.app.data.institution.upcomingDepartures
 import java.time.LocalDateTime
-import java.time.format.DateTimeFormatter
-
 /** Preferences key storing the per-widget institution filter: "UCR" | "UNA" | "BOTH". */
 val BUS_WIDGET_INSTITUTIONS_KEY: Preferences.Key<String> = stringPreferencesKey("institutions")
 const val BUS_WIDGET_FILTER_UCR = "UCR"
 const val BUS_WIDGET_FILTER_UNA = "UNA"
 const val BUS_WIDGET_FILTER_BOTH = "BOTH"
-
-private val busTimeFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 
 private fun institutionsFor(filter: String): List<Institution> = when (filter) {
     BUS_WIDGET_FILTER_UCR -> listOf(Institution.UCR)
@@ -62,6 +59,7 @@ class BusesWidget : GlanceAppWidget() {
         val app = context.applicationContext as MiCampusApplication
         val title = context.getString(R.string.widget_buses_label)
         val emptyLabel = context.getString(R.string.widget_buses_empty)
+        val use12h = runCatching { app.container.settings.current().use12hClock }.getOrDefault(false)
 
         provideContent {
             val prefs = currentState<Preferences>()
@@ -98,7 +96,7 @@ class BusesWidget : GlanceAppWidget() {
                             modifier = GlanceModifier.padding(top = 8.dp),
                         )
                     } else {
-                        departures.forEach { departure -> DepartureRow(departure) }
+                        departures.forEach { departure -> DepartureRow(departure, use12h) }
                     }
                 }
             }
@@ -107,7 +105,7 @@ class BusesWidget : GlanceAppWidget() {
 }
 
 @Composable
-private fun DepartureRow(departure: UpcomingDeparture) {
+private fun DepartureRow(departure: UpcomingDeparture, use12h: Boolean) {
     Column(modifier = GlanceModifier.fillMaxWidth().padding(top = 6.dp)) {
         Text(
             text = "${departure.institution.name} · ${departure.from} → ${departure.to}",
@@ -118,7 +116,7 @@ private fun DepartureRow(departure: UpcomingDeparture) {
             ),
         )
         Text(
-            text = departure.departure.toLocalTime().format(busTimeFormatter),
+            text = departure.departure.toLocalTime().format(timeFormatter(use12h)),
             style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant),
         )
     }

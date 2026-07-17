@@ -17,6 +17,7 @@ data class AppSettings(
     val remindersEnabled: Boolean = false,
     val aiEnabled: Boolean = false,
     val exactReminders: Boolean = false,
+    val use12hClock: Boolean = false,
 )
 class SettingsStore(private val context: Context) {
     private object Keys {
@@ -28,6 +29,7 @@ class SettingsStore(private val context: Context) {
         val reminders = booleanPreferencesKey("reminders")
         val exact = booleanPreferencesKey("exact_reminders")
         val ai = booleanPreferencesKey("ai")
+        val clock12 = booleanPreferencesKey("clock12")
     }
     val settings: Flow<AppSettings> = context.settingsDataStore.data.map { p ->
         val fallbackTheme = if (p[Keys.legacyDark] == true) ThemeMode.DARK else ThemeMode.SYSTEM
@@ -39,6 +41,7 @@ class SettingsStore(private val context: Context) {
             remindersEnabled = p[Keys.reminders] ?: false,
             aiEnabled = p[Keys.ai] ?: false,
             exactReminders = p[Keys.exact] ?: false,
+            use12hClock = p[Keys.clock12] ?: false,
         )
     }
     suspend fun setOnboarding(done: Boolean, ucr: Boolean, una: Boolean) = context.settingsDataStore.edit { it[Keys.done] = done; it[Keys.ucr] = ucr; it[Keys.una] = una }
@@ -46,5 +49,6 @@ class SettingsStore(private val context: Context) {
     suspend fun setReminders(value: Boolean) = context.settingsDataStore.edit { it[Keys.reminders] = value }
     suspend fun setExactReminders(value: Boolean) = context.settingsDataStore.edit { it[Keys.exact] = value }
     suspend fun setAi(value: Boolean) = context.settingsDataStore.edit { it[Keys.ai] = value }
+    suspend fun setUse12hClock(value: Boolean) = context.settingsDataStore.edit { it[Keys.clock12] = value }
     suspend fun current(): AppSettings = settings.first()
 }

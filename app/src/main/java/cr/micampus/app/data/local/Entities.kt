@@ -37,6 +37,7 @@ data class DraftEventEntity(
     val location: String? = null,
     val courseCode: String? = null,
     val originalDateText: String? = null,
+    val description: String? = null,
 )
 @Entity(tableName = "export_records", primaryKeys = ["eventId", "calendarId"])
 data class ExportRecordEntity(
@@ -63,5 +64,5 @@ data class ExportRecordEntity(
     @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun saveExportRecord(record: ExportRecordEntity)
 }
 
-@Database(entities = [ConfirmedEventEntity::class, DraftEventEntity::class, ExportRecordEntity::class], version = 4, exportSchema = false)
+@Database(entities = [ConfirmedEventEntity::class, DraftEventEntity::class, ExportRecordEntity::class], version = 5, exportSchema = false)
 abstract class MiCampusDatabase : RoomDatabase() { abstract fun eventDao(): EventDao }

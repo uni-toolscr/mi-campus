@@ -30,14 +30,11 @@ import cr.micampus.app.core.designsystem.EmptyState
 import cr.micampus.app.core.designsystem.LoadingState
 import cr.micampus.app.core.designsystem.edgeToEdgeContentPadding
 import cr.micampus.app.core.designsystem.safeHorizontalInsets
+import cr.micampus.app.core.designsystem.eventDateTimeFormatter
+import cr.micampus.app.core.designsystem.timeFormatter
 import cr.micampus.app.core.model.CampusEvent
 import cr.micampus.app.core.model.EventKind
 import cr.micampus.app.data.institution.UpcomingDeparture
-import java.time.format.DateTimeFormatter
-import java.util.Locale
-
-private val eventFormatter = DateTimeFormatter.ofPattern("EEE d MMM · HH:mm", Locale.forLanguageTag("es-CR"))
-
 @Composable
 fun HomeScreen(state: HomeUiState, onImport: () -> Unit) {
     LazyColumn(
@@ -67,19 +64,19 @@ fun HomeScreen(state: HomeUiState, onImport: () -> Unit) {
             if (nextEvent == null) {
                 item { EmptyState("Todavía no hay eventos", "Importa la carta al estudiante o el programa de tu curso en PDF, o crea un evento desde Calendario.") }
             } else {
-                item { HeroEventCard(nextEvent) }
-                if (state.events.size > 1) items(state.events.drop(1), key = CampusEvent::id) { EventCard(it) }
+                item { HeroEventCard(nextEvent, state.use12hClock) }
+                if (state.events.size > 1) items(state.events.drop(1), key = CampusEvent::id) { EventCard(it, use12h = state.use12hClock) }
             }
 
             item { SectionTitle("Próximos buses") }
             if (state.buses.isEmpty()) item { EmptyState("Sin salidas próximas verificadas", "Revisa Transporte para el próximo día de servicio.") }
-            else items(state.buses, key = { "${it.institution}-${it.directionId}" }) { bus -> BusCard(bus) }
+            else items(state.buses, key = { "${it.institution}-${it.directionId}" }) { bus -> BusCard(bus, state.use12hClock) }
         }
     }
 }
 
 @Composable
-private fun HeroEventCard(event: CampusEvent) {
+private fun HeroEventCard(event: CampusEvent, use12h: Boolean) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(28.dp),
@@ -91,20 +88,22 @@ private fun HeroEventCard(event: CampusEvent) {
         Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(eventKindLabel(event.kind).uppercase(), style = MaterialTheme.typography.labelLarge)
             Text(event.title, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-            Text("${event.start.format(eventFormatter)} – ${event.end.toLocalTime()}", style = MaterialTheme.typography.titleMedium)
+            Text("${event.start.format(eventDateTimeFormatter(use12h))} – ${event.end.toLocalTime().format(timeFormatter(use12h))}", style = MaterialTheme.typography.titleMedium)
             if (event.location.isNotBlank()) Text(event.location, style = MaterialTheme.typography.bodyMedium)
+            if (event.notes.isNotBlank()) Text(event.notes, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
 
 @Composable
-fun EventCard(event: CampusEvent, modifier: Modifier = Modifier, onClick: (() -> Unit)? = null) {
+fun EventCard(event: CampusEvent, modifier: Modifier = Modifier, onClick: (() -> Unit)? = null, use12h: Boolean = false) {
     val content: @Composable () -> Unit = {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(event.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-            Text("${event.start.format(eventFormatter)} – ${event.end.toLocalTime()}")
+            Text("${event.start.format(eventDateTimeFormatter(use12h))} – ${event.end.toLocalTime().format(timeFormatter(use12h))}")
             Text(event.institution.name + " · " + eventKindLabel(event.kind), color = MaterialTheme.colorScheme.primary)
             if (event.location.isNotBlank()) Text(event.location, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (event.notes.isNotBlank()) Text(event.notes, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
     if (onClick == null) ElevatedCard(modifier.fillMaxWidth()) { content() }
@@ -112,7 +111,7 @@ fun EventCard(event: CampusEvent, modifier: Modifier = Modifier, onClick: (() ->
 }
 
 @Composable
-private fun BusCard(bus: UpcomingDeparture) {
+private fun BusCard(bus: UpcomingDeparture, use12h: Boolean) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
@@ -121,7 +120,7 @@ private fun BusCard(bus: UpcomingDeparture) {
         Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Icon(Icons.Outlined.DirectionsBus, contentDescription = null, tint = MaterialTheme.colorScheme.onSecondaryContainer)
             Column {
-                Text("${bus.institution.name} · ${bus.departure.toLocalTime()}", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSecondaryContainer)
+                Text("${bus.institution.name} · ${bus.departure.toLocalTime().format(timeFormatter(use12h))}", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSecondaryContainer)
                 Text("${bus.from} → ${bus.to}", color = MaterialTheme.colorScheme.onSecondaryContainer)
                 Text("Horario verificado · sin conexión", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSecondaryContainer)
             }

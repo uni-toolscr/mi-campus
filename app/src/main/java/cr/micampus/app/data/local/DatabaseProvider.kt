@@ -7,7 +7,7 @@ object DatabaseProvider {
     @Volatile private var instance: MiCampusDatabase? = null
     fun get(context: Context): MiCampusDatabase = instance ?: synchronized(this) {
         instance ?: Room.databaseBuilder(context.applicationContext, MiCampusDatabase::class.java, "micampus.db")
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
             .build()
             .also { instance = it }
     }
@@ -25,5 +25,10 @@ val MIGRATION_3_4 = object : androidx.room.migration.Migration(3, 4) {
         db.execSQL("ALTER TABLE draft_events ADD COLUMN location TEXT")
         db.execSQL("ALTER TABLE draft_events ADD COLUMN courseCode TEXT")
         db.execSQL("ALTER TABLE draft_events ADD COLUMN originalDateText TEXT")
+    }
+}
+val MIGRATION_4_5 = object : androidx.room.migration.Migration(4, 5) {
+    override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE draft_events ADD COLUMN description TEXT")
     }
 }

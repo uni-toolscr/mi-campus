@@ -39,6 +39,7 @@ class EventRepository(private val dao: EventDao) {
             notes = row.notes,
             source = row.source,
             allDay = row.allDay,
+            courseCode = row.courseCode,
         )
 
         fun toDraft(row: DraftEventEntity) = CalendarEventDraft(
@@ -55,6 +56,7 @@ class EventRepository(private val dao: EventDao) {
             evidence = row.evidence?.let { Evidence(row.sourcePage, it) },
             issues = row.issues.orEmpty().split(',').filter(String::isNotBlank).mapNotNull { runCatching { ImportIssue.valueOf(it) }.getOrNull() }.toSet(),
             originalDateText = row.originalDateText,
+            description = row.description,
         )
     }
 }
@@ -70,6 +72,7 @@ fun CampusEvent.toEntity(zone: ZoneId = ZoneId.systemDefault()) = ConfirmedEvent
     notes = notes,
     source = source,
     allDay = allDay,
+    courseCode = courseCode,
 )
 
 fun CalendarEventDraft.toEntity(now: Instant = Instant.now()) = DraftEventEntity(
@@ -89,4 +92,5 @@ fun CalendarEventDraft.toEntity(now: Instant = Instant.now()) = DraftEventEntity
     location = location,
     courseCode = course?.code,
     originalDateText = originalDateText,
+    description = description,
 )

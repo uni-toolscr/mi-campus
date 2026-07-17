@@ -29,6 +29,7 @@ data class TransportUiState(
     val service: TransportService? = null,
     val nextDeparture: LocalDateTime? = null,
     val minutesUntil: Long? = null,
+    val use12hClock: Boolean = false,
 )
 
 class TransportViewModel(
@@ -44,31 +45,35 @@ class TransportViewModel(
     init {
         viewModelScope.launch {
             val appSettings = settings.current()
+            mutableState.update { it.copy(use12hClock = appSettings.use12hClock) }
             val initial = when {
                 appSettings.ucrEnabled && !appSettings.unaEnabled -> Institution.UCR
                 appSettings.unaEnabled && !appSettings.ucrEnabled -> Institution.UNA
                 else -> Institution.UCR
             }
             if (initial != mutableState.value.institution) {
-                mutableState.value = buildState(initial, null, mutableState.value.date)
+                mutableState.value = buildState(initial, null, mutableState.value.date).copy(use12hClock = mutableState.value.use12hClock)
             }
+        }
+        viewModelScope.launch {
+            settings.settings.collect { appSettings -> mutableState.update { it.copy(use12hClock = appSettings.use12hClock) } }
         }
     }
 
     fun selectInstitution(institution: Institution) {
-        mutableState.value = buildState(institution, null, state.value.date)
+        mutableState.value = buildState(institution, null, state.value.date).copy(use12hClock = state.value.use12hClock)
     }
 
     fun selectDirection(directionId: String) {
-        mutableState.value = buildState(state.value.institution, directionId, state.value.date)
+        mutableState.value = buildState(state.value.institution, directionId, state.value.date).copy(use12hClock = state.value.use12hClock)
     }
 
     fun selectDate(date: LocalDate) {
-        mutableState.value = buildState(state.value.institution, state.value.selectedDirectionId, date)
+        mutableState.value = buildState(state.value.institution, state.value.selectedDirectionId, date).copy(use12hClock = state.value.use12hClock)
     }
 
     fun refreshCountdown() {
-        mutableState.update { current -> buildState(current.institution, current.selectedDirectionId, current.date) }
+        mutableState.update { current -> buildState(current.institution, current.selectedDirectionId, current.date).copy(use12hClock = current.use12hClock) }
     }
 
     private fun buildState(institution: Institution, requestedDirection: String?, date: LocalDate): TransportUiState {

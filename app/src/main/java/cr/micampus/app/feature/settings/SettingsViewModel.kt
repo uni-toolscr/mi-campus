@@ -27,6 +27,7 @@ class SettingsViewModel(
     private val keys: ApiKeyStore,
     private val events: EventRepository,
     private val reminders: ReminderScheduler,
+    private val onSettingsChanged: suspend () -> Unit = {},
 ) : ViewModel() {
     private val keyPresent = MutableStateFlow(keys.read() != null)
     private val message = MutableStateFlow<String?>(null)
@@ -44,6 +45,7 @@ class SettingsViewModel(
     }
 
     fun setTheme(mode: ThemeMode) = viewModelScope.launch { store.setTheme(mode) }
+    fun setUse12hClock(value: Boolean) = viewModelScope.launch { store.setUse12hClock(value); onSettingsChanged() }
     fun setReminders(enabled: Boolean) = viewModelScope.launch {
         store.setReminders(enabled)
         reschedule(enabled, store.current().exactReminders)
