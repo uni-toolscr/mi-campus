@@ -23,13 +23,13 @@ Use JDK 17 and an Android SDK containing platform 36:
 ./gradlew lint testDebugUnitTest assembleDebug
 ```
 
-With emulators or devices running API 26 and API 35+:
+With an emulator or device:
 
 ```bash
 ./gradlew connectedDebugAndroidTest
 ```
 
-CI runs both commands and exercises the instrumentation suite on API 26 and 35. The debug APK is generated at `app/build/outputs/apk/debug/app-debug.apk`.
+GitHub Actions runs lint, debug unit tests, and a debug build. Device tests remain available to run locally. Pushing a `v*` tag creates a signed GitHub Release using the configured release-keystore secrets; the release attaches the APK and its SHA-256 checksum. The debug APK is generated at `app/build/outputs/apk/debug/app-debug.apk`.
 
 ## Privacy
 

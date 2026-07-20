@@ -4,10 +4,51 @@ plugins {
     id("com.google.devtools.ksp")
 }
 
+val configuredVersionCode = providers.gradleProperty("versionCode")
+    .map { value ->
+        value.toIntOrNull()?.takeIf { it > 0 }
+            ?: error("versionCode must be a positive integer.")
+    }
+    .getOrElse(1)
+val configuredVersionName = providers.gradleProperty("versionName").getOrElse("1.0")
+
+val releaseKeystorePath = System.getenv("RELEASE_KEYSTORE_PATH")
+val releaseStorePassword = System.getenv("RELEASE_STORE_PASSWORD")
+val releaseKeyAlias = System.getenv("RELEASE_KEY_ALIAS")
+val releaseKeyPassword = System.getenv("RELEASE_KEY_PASSWORD")
+val releaseSigningValues = listOf(
+    releaseKeystorePath,
+    releaseStorePassword,
+    releaseKeyAlias,
+    releaseKeyPassword,
+)
+val releaseSigningConfigured = releaseSigningValues.all { !it.isNullOrBlank() }
+
+if (releaseSigningValues.any { !it.isNullOrBlank() } && !releaseSigningConfigured) {
+    error("Release signing requires RELEASE_KEYSTORE_PATH, RELEASE_STORE_PASSWORD, RELEASE_KEY_ALIAS, and RELEASE_KEY_PASSWORD.")
+}
+
 android {
     namespace = "cr.micampus.app"
     compileSdk = 37
-    defaultConfig { applicationId = "cr.micampus.app"; minSdk = 26; targetSdk = 36; versionCode = 1; versionName = "1.0"; testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner" }
+    defaultConfig { applicationId = "cr.micampus.app"; minSdk = 26; targetSdk = 36; versionCode = configuredVersionCode; versionName = configuredVersionName; testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner" }
+    signingConfigs {
+        if (releaseSigningConfigured) {
+            create("release") {
+                storeFile = file(requireNotNull(releaseKeystorePath))
+                storePassword = requireNotNull(releaseStorePassword)
+                keyAlias = requireNotNull(releaseKeyAlias)
+                keyPassword = requireNotNull(releaseKeyPassword)
+            }
+        }
+    }
+    buildTypes {
+        getByName("release") {
+            if (releaseSigningConfigured) {
+                signingConfig = signingConfigs.getByName("release")
+            }
+        }
+    }
     buildFeatures { compose = true; buildConfig = true }
     packaging { resources.excludes += "/META-INF/{AL2.0,LGPL2.1}" }
 }
