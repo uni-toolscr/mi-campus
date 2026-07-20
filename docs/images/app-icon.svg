@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108" role="img" aria-labelledby="title desc">
+  <title id="title">Mi Campus app icon</title>
+  <desc id="desc">A white graduation cap on a blue rounded square.</desc>
+  <rect width="108" height="108" rx="24" fill="#315DA8"/>
+  <path fill="#FFFFFF" d="M27 45 54 31.5 81 45 54 58.5ZM34.5 54.5 54 64.25 73.5 54.5V72c0 7-8.5 13.5-19.5 13.5S34.5 79 34.5 72Z"/>
+</svg>

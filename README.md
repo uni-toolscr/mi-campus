@@ -1,48 +1,111 @@
-# Mi Campus
+<div align="center">
+  <img src="docs/images/app-icon.svg" width="112" alt="Ícono de Mi Campus: birrete blanco sobre fondo azul" />
+  <h1>Mi Campus</h1>
+  <p><strong>Tu vida universitaria, organizada y disponible aun sin conexión.</strong></p>
+  <p>Una app Android en español para estudiantes de la UCR y la UNA.</p>
 
-Mi Campus is a Spanish-first, offline-first Android MVP for Universidad de Costa Rica (UCR) and Universidad Nacional de Costa Rica (UNA) students. It targets Android API 26–36 with Kotlin, Jetpack Compose, Material 3, Room, DataStore, and WorkManager. Built edge to edge on Codex
+  <p>
+    <img alt="Android 8.0+" src="https://img.shields.io/badge/Android-8.0%2B-315DA8?logo=android&logoColor=white" />
+    <img alt="Kotlin" src="https://img.shields.io/badge/Kotlin-Jetpack%20Compose-7F52FF?logo=kotlin&logoColor=white" />
+    <img alt="Offline first" src="https://img.shields.io/badge/offline--first-local-315DA8" />
+    <img alt="Instituciones UCR y UNA" src="https://img.shields.io/badge/instituciones-UCR%20%7C%20UNA-315DA8" />
+  </p>
+</div>
 
-The app provides:
+Mi Campus reúne calendario, horarios de transporte, materiales de curso, recordatorios y asistencia opcional con IA en una experiencia Material 3. Está diseñada para mantener los datos del estudiante en el dispositivo por defecto y funcionar sin una cuenta.
 
-- onboarding for one or both institutions;
-- offline, source-attributed 2026 bus schedules with date overrides and expiry handling ([UCR external service](https://www.ucr.ac.cr/acerca-u/campus/bus-externo.html); [UNA peripheral service](https://www.vidaestudiantil.una.ac.cr/noticias/2653-servicio-de-periferica-para-estudiantes-desde-el-campus-omar-dengo-al-campus-benjamin-nunez-y-viceversa));
-- persistent agenda/month calendar views, filters, editing, reminders, and idempotent Android Calendar export;
-- multi-select SAF PDF import with an app-private local library, API 35 embedded-text extraction, ML Kit Latin OCR fallback, editable drafts, and manual entry;
-- independent, default-off Gemini Nano and Google Gemini cloud controls, with local-first routing, per-batch cloud consent, automatic stable-model failover, and a user-supplied encrypted key;
-- light, dark, dynamic-color, compact, and expanded layouts.
+## Un vistazo a la app
 
-Academic calendar entries are intentionally not bundled until an official versioned dataset is supplied. The bundled assistant knowledge is limited to UNA material; it is not a general UCR/UNA knowledge base, and UCR knowledge is not bundled.
+<table>
+  <tr>
+    <td align="center"><img src="docs/images/screenshots/calendar.png" width="260" alt="Horario semanal en el calendario de Mi Campus" /></td>
+    <td align="center"><img src="docs/images/screenshots/transport.png" width="260" alt="Próximas salidas de transporte para la UNA" /></td>
+    <td align="center"><img src="docs/images/screenshots/offline-content.png" width="260" alt="Materiales de cursos guardados para consulta sin conexión" /></td>
+  </tr>
+  <tr>
+    <td align="center"><strong>Calendario</strong><br />Horario, mes y agenda en un solo lugar.</td>
+    <td align="center"><strong>Transporte</strong><br />Horarios oficiales de UCR y UNA disponibles sin conexión.</td>
+    <td align="center"><strong>Contenido</strong><br />Recursos de curso guardados en el dispositivo.</td>
+  </tr>
+</table>
 
-The chat works without an imported PDF. It adds the selected institution short names to the model request as hidden context while keeping the student's visible message unchanged. Bundled retrieval is filtered by institution, and the UI only opens exact `http`/`https` links extracted from the selected corpus. UNA is currently covered; UCR-specific procedures require a relevant imported document until a UCR corpus is added. Scheduling statements and `/crear-evento` or `/create-event` produce an editable proposal; nothing is saved or scheduled until the student confirms it.
+<table>
+  <tr>
+    <td align="center"><img src="docs/images/screenshots/assistant.png" width="260" alt="El asistente propone un evento editable a partir de un mensaje" /></td>
+    <td align="center"><img src="docs/images/screenshots/widgets.png" width="260" alt="Widgets de clases, buses y eventos en la pantalla de inicio de Android" /></td>
+  </tr>
+  <tr>
+    <td align="center"><strong>Asistente</strong><br />Propuestas editables; nada se guarda sin confirmación.</td>
+    <td align="center"><strong>Widgets</strong><br />Clases, buses y eventos desde la pantalla de inicio.</td>
+  </tr>
+</table>
 
-## Build and verify
+## Funciones principales
 
-Use JDK 17 and an Android SDK containing platform 36:
+- Inicio guiado para seleccionar UCR, UNA o ambas instituciones.
+- Agenda persistente con vistas de horario, mes y lista, filtros, edición, recordatorios y exportación idempotente al calendario de Android.
+- Horarios de buses 2026 incluidos en la app, con fuente, cambios por fecha y avisos de vigencia ([servicio externo UCR](https://www.ucr.ac.cr/acerca-u/campus/bus-externo.html) y [servicio de periférica UNA](https://www.vidaestudiantil.una.ac.cr/noticias/2653-servicio-de-periferica-para-estudiantes-desde-el-campus-omar-dengo-al-campus-benjamin-nunez-y-viceversa)).
+- Importación múltiple de PDF mediante el selector de archivos de Android, extracción de texto en API 35, OCR latino con ML Kit como respaldo, borradores editables y entrada manual.
+- Biblioteca privada de documentos y contenido académico disponible sin conexión.
+- Gemini Nano local y Google Gemini en la nube como opciones independientes y desactivadas por defecto, con consentimiento por lote o pregunta y clave cifrada proporcionada por el usuario.
+- Temas claro, oscuro y de color dinámico, además de diseños compactos y expandidos.
+
+> [!NOTE]
+> No se incluyen entradas de calendario académico hasta contar con un conjunto de datos oficial y versionado. El conocimiento institucional integrado cubre actualmente material de la UNA; para consultas específicas de la UCR se necesita un documento importado relevante.
+
+## Asistente y creación de eventos
+
+El chat funciona incluso sin importar un PDF. Usa las instituciones seleccionadas como contexto privado sin modificar el mensaje visible del estudiante, filtra las fuentes por institución y solo abre enlaces `http` o `https` exactos encontrados en el material seleccionado.
+
+Las expresiones de horario y los comandos `/crear-evento` o `/create-event` generan una propuesta editable. El estudiante debe confirmarla antes de que se guarde o programe cualquier recordatorio.
+
+## Tecnología
+
+| Área | Implementación |
+| --- | --- |
+| UI | Kotlin, Jetpack Compose y Material 3 |
+| Datos locales | Room y DataStore |
+| Tareas | WorkManager |
+| IA local | Gemini Nano mediante AICore y ML Kit GenAI |
+| Compatibilidad | Android API 26–36 |
+
+## Compilar y verificar
+
+Se necesita JDK 17 y un Android SDK con la plataforma 36:
 
 ```bash
 ./gradlew lint testDebugUnitTest assembleDebug
 ```
 
-With an emulator or device:
+Con un emulador o dispositivo conectado:
 
 ```bash
 ./gradlew connectedDebugAndroidTest
 ```
 
-GitHub Actions runs lint, debug unit tests, and a debug build. Device tests remain available to run locally. Pushing a `v*` tag creates a signed GitHub Release using the configured release-keystore secrets; the release attaches the APK and its SHA-256 checksum. The debug APK is generated at `app/build/outputs/apk/debug/app-debug.apk`.
+GitHub Actions ejecuta lint, pruebas unitarias y la compilación de depuración. Las pruebas de dispositivo se pueden ejecutar localmente. Una etiqueta `v*` crea una GitHub Release firmada mediante los secretos configurados y adjunta el APK junto con su suma SHA-256. El APK de depuración queda en `app/build/outputs/apk/debug/app-debug.apk`.
 
-## Privacy
+## Privacidad por diseño
 
-The app works without an account. Imported PDFs are retained only in app-private, no-backup device storage until the student deletes them; extracted text chunks used by document chat are stored locally in the backup-excluded Room database and deleted with the PDF. Both AI processors are disabled on a fresh installation. **Modelo local (Gemini Nano)** is enabled only when AICore reports the device as available, downloadable, or downloading; **API de Google Gemini (nube)** remains independent and requires a fresh decision for each selected import batch and each chat question. Cloud processing never sends the original PDF. See [PRIVACY.md](PRIVACY.md) and [IMPLEMENTATION_NOTES.md](IMPLEMENTATION_NOTES.md).
+- La app funciona sin una cuenta.
+- Los PDF se guardan únicamente en almacenamiento privado y excluido de copias de seguridad hasta que el estudiante los elimina.
+- El texto extraído se almacena localmente en Room y se elimina junto con el PDF.
+- Ambos procesadores de IA están desactivados en una instalación nueva.
+- El procesamiento en la nube requiere una decisión nueva para cada lote de importación y cada pregunta del chat.
+- El PDF original nunca se envía a la nube.
 
-## Gemini Nano on compatible devices
+Consulta [PRIVACY.md](PRIVACY.md) e [IMPLEMENTATION_NOTES.md](IMPLEMENTATION_NOTES.md) para conocer los detalles técnicos y de tratamiento de datos.
 
-Mi Campus uses the pinned `com.google.mlkit:genai-prompt:1.0.0-beta3` artifact through AICore and does not bundle model weights. Event proposals use ML Kit Structured Output (`genai-schema-compiler:1.0.0-alpha1`) when the device runtime supports it and fall back to constrained JSON with strict validation. Runtime `checkStatus()` is the compatibility authority; the app does not infer support or a Nano version from the device manufacturer or model. When available, the base-model identifier and token limit come directly from ML Kit. The first model download requires a network connection and explicit confirmation; after it completes, syllabus/event extraction can run offline while Mi Campus remains in the foreground. A locked bootloader, current Google system components, sufficient storage, and available AICore quota are required.
+## Gemini Nano en dispositivos compatibles
 
-The optional device smoke test is skipped by default, runs on any attached device, skips unsupported devices, and never starts a download. With the model already available, run:
+Mi Campus usa `com.google.mlkit:genai-prompt:1.0.0-beta3` mediante AICore y no incluye pesos del modelo. Las propuestas de eventos usan ML Kit Structured Output (`genai-schema-compiler:1.0.0-alpha1`) cuando el entorno lo admite y, en caso contrario, JSON restringido con validación estricta.
+
+La compatibilidad se determina en tiempo de ejecución con `checkStatus()`. La primera descarga del modelo requiere conexión y confirmación explícita; después, la extracción de eventos puede funcionar sin conexión mientras Mi Campus permanece en primer plano.
+
+La prueba opcional no inicia descargas, omite automáticamente dispositivos incompatibles y se ejecuta así cuando el modelo ya está disponible:
 
 ```bash
 ./gradlew connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.runNanoDeviceTest=true
 ```
 
-Debug builds also expose **Ajustes → Diagnóstico de importación**, including an explicit **Probar Gemini Nano** action with a constant content-free request. The exported ZIP contains a redacted route trace for the latest 10 attempts or tests, including operation names, allowlisted exception categories, ML Kit error codes, numeric input sizes, Nano capability/token checks, and cloud HTTP status/fallback decisions. It never contains PDF text, prompts, responses, exception messages, stack traces, document names, API keys, or calendar data; release builds neither record nor expose this diagnostic feature.
+Las compilaciones de depuración también incluyen **Ajustes → Diagnóstico de importación** y la acción **Probar Gemini Nano**. El ZIP de diagnóstico contiene únicamente trazas permitidas y redactadas: nunca incluye texto de PDF, prompts, respuestas, nombres de documentos, claves API ni datos del calendario.
