@@ -1,0 +1,36 @@
+<resources>
+    <string name="widget_events_label">Próximos eventos</string>
+    <string name="widget_events_description">Muestra los próximos eventos confirmados del calendario.</string>
+    <string name="widget_buses_label">Próximos buses</string>
+    <string name="widget_buses_description">Muestra las próximas salidas de bus verificadas, filtradas por institución.</string>
+    <string name="widget_class_label">Próximas clases hoy</string>
+    <string name="widget_class_description">Muestra las clases restantes de hoy de tu horario.</string>
+    <string name="widget_config_title">Configurar widget de buses</string>
+    <string name="widget_config_title_events">Configurar widget de eventos</string>
+    <string name="widget_config_title_class">Configurar widget de clases</string>
+    <string name="widget_config_confirm">Listo</string>
+    <string name="widget_config_institution_section">Institución</string>
+    <string name="widget_config_directions_section">Direcciones</string>
+    <string name="widget_events_empty">Todavía no hay eventos</string>
+    <string name="widget_buses_empty">No hay servicio</string>
+    <string name="widget_class_empty">No hay más clases hoy</string>
+    <string name="widget_next_departure_in">En %1$d min · próxima salida</string>
+    <string name="widget_next_departure_in_short">En %1$d min</string>
+    <string name="widget_next_departure_scheduled">Próxima salida</string>
+    <string name="widget_departing_now">Saliendo ahora</string>
+    <string name="widget_institution_ucr">UCR</string>
+    <string name="widget_institution_una">UNA</string>
+    <string name="widget_institution_both">Ambas</string>
+    <string name="widget_preview_class_description">Vista previa: Próximas clases hoy</string>
+    <string name="widget_preview_class_title">Próximas clases hoy</string>
+    <string name="widget_preview_class_course">Cálculo I</string>
+    <string name="widget_preview_class_detail">10:00–11:50</string>
+    <string name="widget_preview_events_description">Vista previa: Próximos eventos</string>
+    <string name="widget_preview_events_title">Próximos eventos</string>
+    <string name="widget_preview_events_name">Entrega de proyecto</string>
+    <string name="widget_preview_events_detail">Lun 21 jul · 10:00</string>
+    <string name="widget_preview_buses_description">Vista previa: Próximos buses</string>
+    <string name="widget_preview_buses_title">Próximos buses · Ambas</string>
+    <string name="widget_preview_buses_time">7:30</string>
+    <string name="widget_preview_buses_route">UCR · Finca 2 → Sede</string>
+</resources>

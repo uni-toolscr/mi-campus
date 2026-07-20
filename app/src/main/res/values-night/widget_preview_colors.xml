@@ -1,0 +1,6 @@
+<resources>
+    <color name="widget_preview_surface">#13120F</color>
+    <color name="widget_preview_on_surface">#E7E1DA</color>
+    <color name="widget_preview_primary_container">#20467A</color>
+    <color name="widget_preview_on_primary_container">#D8E2FF</color>
+</resources>

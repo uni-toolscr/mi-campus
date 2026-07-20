@@ -1,0 +1,7 @@
+<resources>
+    <!-- Night-mode counterparts from the active Android 12+ system palette. -->
+    <color name="widget_preview_surface">@android:color/system_neutral1_900</color>
+    <color name="widget_preview_on_surface">@android:color/system_neutral1_100</color>
+    <color name="widget_preview_primary_container">@android:color/system_accent1_700</color>
+    <color name="widget_preview_on_primary_container">@android:color/system_accent1_100</color>
+</resources>
