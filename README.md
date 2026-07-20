@@ -69,6 +69,12 @@ Las expresiones de horario y los comandos `/crear-evento` o `/create-event` gene
 | IA local | Gemini Nano mediante AICore y ML Kit GenAI |
 | Compatibilidad | Android API 26–36 |
 
+## Construido con Codex y GPT‑5.6
+
+Mi Campus fue diseñado, implementado y depurado con Codex usando GPT‑5.6 durante Build Week. Codex funcionó como colaborador de ingeniería desde la concepción hasta la implementación final, mientras GPT‑5.6 aportó el razonamiento para conectar decisiones de producto, arquitectura, privacidad y código.
+
+GPT‑5.6 se utilizó mediante Codex para investigar APIs, comparar alternativas técnicas, definir la arquitectura offline-first, implementar funciones entre varias capas, crear pruebas e interpretar errores de builds y dispositivos reales. Fue especialmente útil para desarrollar la integración con Moodle que conecta Aula Virtual, implementar Gemini Nano, proteger sesiones y consentimiento, y validar borradores antes de guardar eventos. El trabajo avanzó en ciclos verificables de implementación, lint, pruebas, compilación y corrección: GPT‑5.6 interpretaba la intención, analizaba la evidencia y refinaba las soluciones, mientras las decisiones de producto, privacidad, control de calidad y aceptación final permanecieron bajo supervisión humana.
+
 ## Compilar y verificar
 
 Se necesita JDK 17 y un Android SDK con la plataforma 36:
