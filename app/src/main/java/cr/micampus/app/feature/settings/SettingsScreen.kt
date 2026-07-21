@@ -81,6 +81,7 @@ import cr.micampus.app.core.model.AcademicProgressFilter
 import cr.micampus.app.core.model.AcademicTermProgress
 import cr.micampus.app.core.model.UnfinishedCoursePolicy
 import cr.micampus.app.data.ai.NanoCapability
+import cr.micampus.app.data.update.UpdateDownloadState
 import cr.micampus.app.feature.update.UpdateViewModel
 import cr.micampus.app.platform.reminders.ReminderScheduler
 import java.time.Instant
@@ -90,7 +91,7 @@ import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(state: SettingsUiState, viewModel: SettingsViewModel, update: UpdateViewModel, onBack: () -> Unit = {}) {
+fun SettingsScreen(state: SettingsUiState, viewModel: SettingsViewModel, update: UpdateViewModel, onInstallUpdate: () -> Unit, onBack: () -> Unit = {}) {
     val context = LocalContext.current
     val updateUiState by update.state.collectAsStateWithLifecycle()
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -360,6 +361,7 @@ fun SettingsScreen(state: SettingsUiState, viewModel: SettingsViewModel, update:
                     supportingContent = {
                         val text = when {
                             updateUiState.checking -> "Buscando actualizaciones…"
+                            updateUiState.download is UpdateDownloadState.Completed -> "Actualización descargada; lista para instalar"
                             updateUiState.message != null -> updateUiState.message.orEmpty()
                             updateUiState.available != null -> "Hay una versión ${updateUiState.available?.version} disponible"
                             else -> ""
@@ -367,8 +369,12 @@ fun SettingsScreen(state: SettingsUiState, viewModel: SettingsViewModel, update:
                         Text(text)
                     },
                     trailingContent = {
-                        if (updateUiState.checking) CircularProgressIndicator(modifier = Modifier.padding(12.dp))
-                        else TextButton(onClick = { update.checkForUpdate(manual = true) }) { Text("Buscar actualizaciones") }
+                        when {
+                            updateUiState.checking -> CircularProgressIndicator(modifier = Modifier.padding(12.dp))
+                            updateUiState.download is UpdateDownloadState.Completed ->
+                                TextButton(onClick = onInstallUpdate) { Text("Instalar") }
+                            else -> TextButton(onClick = { update.checkForUpdate(manual = true) }) { Text("Buscar actualizaciones") }
+                        }
                     },
                 )
             }

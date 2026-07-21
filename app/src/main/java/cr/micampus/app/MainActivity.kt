@@ -3,13 +3,10 @@ package cr.micampus.app
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.os.Bundle
-import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
-import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
@@ -63,6 +60,7 @@ import cr.micampus.app.feature.transport.TransportScreen
 import cr.micampus.app.feature.transport.TransportViewModel
 import cr.micampus.app.feature.update.UpdateAvailableDialog
 import cr.micampus.app.feature.update.UpdateViewModel
+import cr.micampus.app.feature.update.rememberUpdateInstallAction
 import cr.micampus.app.platform.widgets.EXTRA_WIDGET_DESTINATION
 import cr.micampus.app.platform.widgets.WIDGET_DEST_CALENDAR_AGENDA
 import cr.micampus.app.platform.widgets.WIDGET_DEST_CALENDAR_HORARIO
@@ -179,27 +177,8 @@ private fun MainDestinations(container: AppContainer, launchDestination: Mutable
 
     val pendingLaunch by launchDestination.collectAsStateWithLifecycle()
     val context = LocalContext.current
-    val installLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { }
+    val attemptInstallUpdate = rememberUpdateInstallAction(update)
     LaunchedEffect(Unit) { update.checkForUpdate() }
-    LaunchedEffect(updateState.installFile) {
-        val file = updateState.installFile ?: return@LaunchedEffect
-        if (!context.packageManager.canRequestPackageInstalls()) {
-            installLauncher.launch(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, "package:${context.packageName}".toUri()))
-            update.consumeInstallFile()
-            return@LaunchedEffect
-        }
-        try {
-            val uri = FileProvider.getUriForFile(context, "${context.packageName}.files", file)
-            context.startActivity(
-                Intent(Intent.ACTION_VIEW)
-                    .setDataAndType(uri, "application/vnd.android.package-archive")
-                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION),
-            )
-        } catch (_: ActivityNotFoundException) {
-            // No installer available; nothing more we can do here.
-        }
-        update.consumeInstallFile()
-    }
     LaunchedEffect(contents) {
         contents.effects.collect { effect ->
             try {
@@ -290,7 +269,7 @@ private fun MainDestinations(container: AppContainer, launchDestination: Mutable
         )
         when (overlay) {
             Overlay.SETTINGS -> Surface(Modifier.fillMaxSize()) {
-                SettingsScreen(settingsState, settings, update, onBack = { overlay = null })
+                SettingsScreen(settingsState, settings, update, onInstallUpdate = attemptInstallUpdate, onBack = { overlay = null })
             }
             Overlay.CHAT -> Surface(Modifier.fillMaxSize()) {
                 ChatScreen(chatState, chat, onBack = { overlay = null })
@@ -298,7 +277,7 @@ private fun MainDestinations(container: AppContainer, launchDestination: Mutable
             null -> Unit
         }
         if (updateState.available != null && updateState.available?.version != updateState.dismissedVersion) {
-            UpdateAvailableDialog(updateState, onDownload = update::startDownload, onDismiss = update::dismiss)
+            UpdateAvailableDialog(updateState, onDownload = update::startDownload, onInstall = attemptInstallUpdate, onDismiss = update::dismiss)
         }
     }
 }

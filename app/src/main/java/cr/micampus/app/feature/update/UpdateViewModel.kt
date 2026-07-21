@@ -12,14 +12,12 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import java.io.File
 
 data class UpdateUiState(
     val checking: Boolean = false,
     val available: AppUpdate? = null,
     val dismissedVersion: String? = null,
     val download: UpdateDownloadState = UpdateDownloadState.Idle,
-    val installFile: File? = null,
     val message: String? = null,
 )
 
@@ -60,7 +58,7 @@ class UpdateViewModel(
                 val file = downloader.download(update) { read, total ->
                     _state.value = _state.value.copy(download = UpdateDownloadState.Downloading(read, total))
                 }
-                _state.value = _state.value.copy(download = UpdateDownloadState.Completed(file), installFile = file)
+                _state.value = _state.value.copy(download = UpdateDownloadState.Completed(file))
             } catch (c: CancellationException) {
                 throw c
             } catch (e: Exception) {
@@ -73,6 +71,4 @@ class UpdateViewModel(
         val version = _state.value.available?.version ?: return
         viewModelScope.launch { settings.setDismissedUpdateVersion(version) }
     }
-
-    fun consumeInstallFile() { _state.value = _state.value.copy(installFile = null) }
 }

@@ -18,7 +18,7 @@ import androidx.compose.ui.unit.dp
 import cr.micampus.app.data.update.UpdateDownloadState
 
 @Composable
-fun UpdateAvailableDialog(state: UpdateUiState, onDownload: () -> Unit, onDismiss: () -> Unit) {
+fun UpdateAvailableDialog(state: UpdateUiState, onDownload: () -> Unit, onInstall: () -> Unit, onDismiss: () -> Unit) {
     val downloading = state.download is UpdateDownloadState.Downloading
     val completed = state.download is UpdateDownloadState.Completed
     AlertDialog(
@@ -49,10 +49,8 @@ fun UpdateAvailableDialog(state: UpdateUiState, onDownload: () -> Unit, onDismis
             }
         },
         confirmButton = {
-            // Once the download completes, MainActivity's install-file effect has already
-            // launched the system installer; re-tapping must not silently re-download.
-            Button(onClick = onDownload, enabled = !downloading && !completed) {
-                Text(if (completed) "Instalador abierto" else "Descargar")
+            Button(onClick = if (completed) onInstall else onDownload, enabled = !downloading) {
+                Text(if (completed) "Instalar" else "Descargar")
             }
         },
         dismissButton = {
