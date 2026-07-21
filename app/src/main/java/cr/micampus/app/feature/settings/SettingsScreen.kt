@@ -178,27 +178,6 @@ fun SettingsScreen(state: SettingsUiState, viewModel: SettingsViewModel, update:
             }
         }
         item {
-            SettingsSection("Actualizaciones") {
-                GroupedListItem(
-                    isLast = true,
-                    headlineContent = { Text("Versión ${BuildConfig.VERSION_NAME}") },
-                    supportingContent = {
-                        val text = when {
-                            updateUiState.checking -> "Buscando actualizaciones…"
-                            updateUiState.message != null -> updateUiState.message.orEmpty()
-                            updateUiState.available != null -> "Hay una versión ${updateUiState.available?.version} disponible"
-                            else -> ""
-                        }
-                        Text(text)
-                    },
-                    trailingContent = {
-                        if (updateUiState.checking) CircularProgressIndicator(modifier = Modifier.padding(12.dp))
-                        else TextButton(onClick = { update.checkForUpdate(manual = true) }) { Text("Buscar actualizaciones") }
-                    },
-                )
-            }
-        }
-        item {
             SettingsSection("Apariencia") {
                 SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(16.dp)) {
                     ThemeMode.values().forEachIndexed { index, mode ->
@@ -214,7 +193,7 @@ fun SettingsScreen(state: SettingsUiState, viewModel: SettingsViewModel, update:
             }
         }
         item {
-            SettingsSection("Recordatorios") {
+            SettingsSection("Recordatorios", caption = "Sin acceso exacto, Mi Campus usa WorkManager y la entrega puede retrasarse.") {
                 SettingSwitchRow("Notificaciones de eventos", state.settings.remindersEnabled) { enabled ->
                     if (!enabled) viewModel.setReminders(false)
                     else if (Build.VERSION.SDK_INT >= 33) notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
@@ -244,9 +223,11 @@ fun SettingsScreen(state: SettingsUiState, viewModel: SettingsViewModel, update:
                 }
             }
         }
-        item { Text("Sin acceso exacto, Mi Campus usa WorkManager y la entrega puede retrasarse.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         item {
-            SettingsSection("Aula Virtual UNA") {
+            SettingsSection(
+                "Aula Virtual UNA",
+                caption = "La contraseña se envía por separado a Aula Virtual y Banner UNA y nunca se guarda. El token de Aula Virtual se cifra con Android Keystore.",
+            ) {
                 GroupedListItem(
                     isLast = true,
                     headlineContent = {
@@ -274,13 +255,6 @@ fun SettingsScreen(state: SettingsUiState, viewModel: SettingsViewModel, update:
                 )
             }
         }
-        item {
-            Text(
-                "La contraseña se envía por separado a Aula Virtual y Banner UNA y nunca se guarda. El token de Aula Virtual se cifra con Android Keystore.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
         if (state.moodle.connected) item {
             AcademicProgressCard(
                 state = state.progress,
@@ -298,7 +272,10 @@ fun SettingsScreen(state: SettingsUiState, viewModel: SettingsViewModel, update:
             )
         }
         item {
-            SettingsSection("IA y privacidad") {
+            SettingsSection(
+                "Inteligencia artificial y privacidad",
+                caption = "Puedes activar el procesamiento local y la API de Google por separado. La nube nunca se usa automáticamente: cada lote exige consentimiento y solo se envía el texto extraído, no el archivo.",
+            ) {
                 val localCompatible = state.localAiAvailability.isCompatible
                 val localDescription = when (val availability = state.localAiAvailability) {
                     LocalAiAvailability.Checking -> "Comprobando compatibilidad con Gemini Nano"
@@ -340,15 +317,9 @@ fun SettingsScreen(state: SettingsUiState, viewModel: SettingsViewModel, update:
                 )
             }
         }
-        item {
-            Text(
-                "Puedes activar el procesamiento local y la API de Google por separado. La nube nunca se usa automáticamente: cada lote exige consentimiento y solo se envía el texto extraído, no el archivo.",
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
         if (state.diagnosticsAvailable) {
             item {
-                SettingsSection("Diagnóstico de importación") {
+                SettingsSection("Diagnóstico e importación") {
                     GroupedListItem(
                         modifier = Modifier.semantics(mergeDescendants = true) {
                             stateDescription = nanoSelfTestDescription(state.nanoSelfTest)
@@ -381,6 +352,27 @@ fun SettingsScreen(state: SettingsUiState, viewModel: SettingsViewModel, update:
                 }
             }
         }
+        item {
+            SettingsSection("Acerca de") {
+                GroupedListItem(
+                    isLast = true,
+                    headlineContent = { Text("Versión ${BuildConfig.VERSION_NAME}") },
+                    supportingContent = {
+                        val text = when {
+                            updateUiState.checking -> "Buscando actualizaciones…"
+                            updateUiState.message != null -> updateUiState.message.orEmpty()
+                            updateUiState.available != null -> "Hay una versión ${updateUiState.available?.version} disponible"
+                            else -> ""
+                        }
+                        Text(text)
+                    },
+                    trailingContent = {
+                        if (updateUiState.checking) CircularProgressIndicator(modifier = Modifier.padding(12.dp))
+                        else TextButton(onClick = { update.checkForUpdate(manual = true) }) { Text("Buscar actualizaciones") }
+                    },
+                )
+            }
+        }
         state.message?.let { item { Text(it, color = MaterialTheme.colorScheme.primary) } }
     }
 }
@@ -403,10 +395,11 @@ private fun nanoSelfTestDescription(state: NanoSelfTestUiState): String = when (
 }
 
 @Composable
-private fun SettingsSection(title: String, content: @Composable () -> Unit) {
+private fun SettingsSection(title: String, caption: String? = null, content: @Composable () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) { content() }
+        caption?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
     }
 }
 
