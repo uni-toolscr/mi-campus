@@ -20,6 +20,8 @@ import cr.micampus.app.data.moodle.MoodleSyncScheduler
 import cr.micampus.app.data.banner.AcademicProgressStore
 import cr.micampus.app.data.banner.BannerProgressClient
 import cr.micampus.app.data.banner.BannerProgressManager
+import cr.micampus.app.data.update.UpdateChecker
+import cr.micampus.app.data.update.UpdateDownloader
 import cr.micampus.app.platform.calendar.CalendarExporter
 import cr.micampus.app.platform.reminders.ReminderScheduler
 import cr.micampus.app.platform.widgets.WidgetRefresher
@@ -67,6 +69,8 @@ class AppContainer(context: Context) {
     )
     val academicProgressStore = AcademicProgressStore(context)
     val bannerProgress = BannerProgressManager(BannerProgressClient(), academicProgressStore)
+    val updateChecker: UpdateChecker = UpdateChecker()
+    val updateDownloader: UpdateDownloader = UpdateDownloader(context.applicationContext)
 
     init {
         if (moodleAccounts.read() != null) moodleSyncScheduler.schedule()

@@ -3,4 +3,5 @@
     <files-path name="retained_pdfs" path="../no_backup/imported_pdfs/" />
     <files-path name="diagnostic_exports" path="../no_backup/diagnostics/exports/" />
     <files-path name="moodle_downloads" path="../no_backup/moodle_downloads/" />
+    <files-path name="app_updates" path="../no_backup/updates/" />
 </paths>

@@ -47,6 +47,7 @@ data class AppSettings(
     val agendaExcludedKinds: Set<EventKind> = setOf(EventKind.CLASS),
     val agendaExcludedInstitutions: Set<Institution> = emptySet(),
     val academicProgressFilter: AcademicProgressFilter = AcademicProgressFilter(),
+    val dismissedUpdateVersion: String? = null,
 ) {
     /**
      * Enabled institutions in enum order. There is intentionally no implicit institution when
@@ -84,6 +85,7 @@ class SettingsStore internal constructor(private val dataStore: DataStore<Prefer
         val academicProgressYear = intPreferencesKey("academic_progress_year")
         val academicProgressCycle = stringPreferencesKey("academic_progress_cycle")
         val academicProgressUnfinishedPolicy = stringPreferencesKey("academic_progress_unfinished_policy")
+        val dismissedUpdateVersion = stringPreferencesKey("dismissed_update_version")
     }
     val settings: Flow<AppSettings> = dataStore.data.map { p ->
         val fallbackTheme = if (p[Keys.legacyDark] == true) ThemeMode.DARK else ThemeMode.SYSTEM
@@ -111,6 +113,7 @@ class SettingsStore internal constructor(private val dataStore: DataStore<Prefer
                 unfinishedPolicy = p[Keys.academicProgressUnfinishedPolicy]?.let { runCatching { UnfinishedCoursePolicy.valueOf(it) }.getOrNull() }
                     ?: UnfinishedCoursePolicy.EXCLUDE,
             ),
+            dismissedUpdateVersion = p[Keys.dismissedUpdateVersion],
         )
     }
     suspend fun setOnboarding(done: Boolean, ucr: Boolean, una: Boolean) = dataStore.edit { it[Keys.done] = done; it[Keys.ucr] = ucr; it[Keys.una] = una }
@@ -130,5 +133,6 @@ class SettingsStore internal constructor(private val dataStore: DataStore<Prefer
         if (filter.cycle == null) it.remove(Keys.academicProgressCycle) else it[Keys.academicProgressCycle] = filter.cycle.name
         it[Keys.academicProgressUnfinishedPolicy] = filter.unfinishedPolicy.name
     }
+    suspend fun setDismissedUpdateVersion(version: String?) = dataStore.edit { if (version == null) it.remove(Keys.dismissedUpdateVersion) else it[Keys.dismissedUpdateVersion] = version }
     override suspend fun current(): AppSettings = settings.first()
 }

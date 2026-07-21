@@ -71,6 +71,8 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import cr.micampus.app.BuildConfig
 import cr.micampus.app.core.designsystem.edgeToEdgeContentPadding
 import cr.micampus.app.core.designsystem.safeHorizontalInsets
 import cr.micampus.app.core.model.ThemeMode
@@ -79,6 +81,7 @@ import cr.micampus.app.core.model.AcademicProgressFilter
 import cr.micampus.app.core.model.AcademicTermProgress
 import cr.micampus.app.core.model.UnfinishedCoursePolicy
 import cr.micampus.app.data.ai.NanoCapability
+import cr.micampus.app.feature.update.UpdateViewModel
 import cr.micampus.app.platform.reminders.ReminderScheduler
 import java.time.Instant
 import java.time.ZoneId
@@ -87,8 +90,9 @@ import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(state: SettingsUiState, viewModel: SettingsViewModel, onBack: () -> Unit = {}) {
+fun SettingsScreen(state: SettingsUiState, viewModel: SettingsViewModel, update: UpdateViewModel, onBack: () -> Unit = {}) {
     val context = LocalContext.current
+    val updateUiState by update.state.collectAsStateWithLifecycle()
     val lifecycleOwner = LocalLifecycleOwner.current
     var notificationAvailability by remember(context) { mutableStateOf(notificationAvailability(context)) }
     val remindersEnabled by rememberUpdatedState(state.settings.remindersEnabled)
@@ -171,6 +175,27 @@ fun SettingsScreen(state: SettingsUiState, viewModel: SettingsViewModel, onBack:
             SettingsSection("Instituciones") {
                 SettingSwitchRow("Universidad de Costa Rica", state.settings.ucrEnabled) { viewModel.setInstitutions(it, state.settings.unaEnabled) }
                 SettingSwitchRow("Universidad Nacional", state.settings.unaEnabled, isLast = true) { viewModel.setInstitutions(state.settings.ucrEnabled, it) }
+            }
+        }
+        item {
+            SettingsSection("Actualizaciones") {
+                GroupedListItem(
+                    isLast = true,
+                    headlineContent = { Text("Versión ${BuildConfig.VERSION_NAME}") },
+                    supportingContent = {
+                        val text = when {
+                            updateUiState.checking -> "Buscando actualizaciones…"
+                            updateUiState.message != null -> updateUiState.message.orEmpty()
+                            updateUiState.available != null -> "Hay una versión ${updateUiState.available?.version} disponible"
+                            else -> ""
+                        }
+                        Text(text)
+                    },
+                    trailingContent = {
+                        if (updateUiState.checking) CircularProgressIndicator(modifier = Modifier.padding(12.dp))
+                        else TextButton(onClick = { update.checkForUpdate(manual = true) }) { Text("Buscar actualizaciones") }
+                    },
+                )
             }
         }
         item {
