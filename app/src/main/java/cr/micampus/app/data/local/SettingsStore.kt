@@ -46,6 +46,8 @@ data class AppSettings(
     val semesterEnd: LocalDate? = null,
     val agendaExcludedKinds: Set<EventKind> = setOf(EventKind.CLASS),
     val agendaExcludedInstitutions: Set<Institution> = emptySet(),
+    val horarioShowLocation: Boolean = true,
+    val horarioShortDayLabels: Boolean = true,
     val academicProgressFilter: AcademicProgressFilter = AcademicProgressFilter(),
     val dismissedUpdateVersion: String? = null,
 ) {
@@ -82,6 +84,8 @@ class SettingsStore internal constructor(private val dataStore: DataStore<Prefer
         val semesterEnd = stringPreferencesKey("semester_end")
         val agendaExcludedKinds = stringSetPreferencesKey("agenda_excluded_kinds")
         val agendaExcludedInstitutions = stringSetPreferencesKey("agenda_excluded_institutions")
+        val horarioShowLocation = booleanPreferencesKey("horario_show_location")
+        val horarioShortDayLabels = booleanPreferencesKey("horario_short_day_labels")
         val academicProgressYear = intPreferencesKey("academic_progress_year")
         val academicProgressCycle = stringPreferencesKey("academic_progress_cycle")
         val academicProgressUnfinishedPolicy = stringPreferencesKey("academic_progress_unfinished_policy")
@@ -107,6 +111,8 @@ class SettingsStore internal constructor(private val dataStore: DataStore<Prefer
             semesterEnd = p[Keys.semesterEnd]?.let { runCatching { LocalDate.parse(it) }.getOrNull() },
             agendaExcludedKinds = parseAgendaExcludedKinds(p[Keys.agendaExcludedKinds]),
             agendaExcludedInstitutions = parseAgendaExcludedInstitutions(p[Keys.agendaExcludedInstitutions]),
+            horarioShowLocation = p[Keys.horarioShowLocation] ?: true,
+            horarioShortDayLabels = p[Keys.horarioShortDayLabels] ?: true,
             academicProgressFilter = AcademicProgressFilter(
                 year = p[Keys.academicProgressYear]?.takeIf { it in 1900..2100 },
                 cycle = p[Keys.academicProgressCycle]?.let { runCatching { AcademicCycle.valueOf(it) }.getOrNull() },
@@ -127,6 +133,10 @@ class SettingsStore internal constructor(private val dataStore: DataStore<Prefer
     suspend fun setAgendaFilters(excludedKinds: Set<EventKind>, excludedInstitutions: Set<Institution>) = dataStore.edit {
         it[Keys.agendaExcludedKinds] = excludedKinds.mapTo(mutableSetOf(), EventKind::name)
         it[Keys.agendaExcludedInstitutions] = excludedInstitutions.mapTo(mutableSetOf(), Institution::name)
+    }
+    suspend fun setHorarioDisplay(showLocation: Boolean, shortDayLabels: Boolean) = dataStore.edit {
+        it[Keys.horarioShowLocation] = showLocation
+        it[Keys.horarioShortDayLabels] = shortDayLabels
     }
     suspend fun setAcademicProgressFilter(filter: AcademicProgressFilter) = dataStore.edit {
         if (filter.year == null) it.remove(Keys.academicProgressYear) else it[Keys.academicProgressYear] = filter.year

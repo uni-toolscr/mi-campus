@@ -23,8 +23,6 @@ import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -38,6 +36,7 @@ import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.FilterList
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
@@ -59,6 +58,7 @@ import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -66,11 +66,15 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import cr.micampus.app.core.designsystem.EmptyState
@@ -82,11 +86,14 @@ import cr.micampus.app.core.model.EventKind
 import cr.micampus.app.core.model.Institution
 import cr.micampus.app.feature.home.EventCard
 import cr.micampus.app.platform.calendar.CalendarChoice
-import java.time.YearMonth
+import kotlinx.coroutines.launch
+import java.time.DayOfWeek
+import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
-private val monthFormatter = DateTimeFormatter.ofPattern("MMMM yyyy", Locale.forLanguageTag("es-CR"))
+private val weekRangeFormatter = DateTimeFormatter.ofPattern("d MMM", Locale.forLanguageTag("es-CR"))
+private val daySectionFormatter = DateTimeFormatter.ofPattern("EEEE d 'de' MMMM", Locale.forLanguageTag("es-CR"))
 private val CalendarFloatingActionsClearance = FloatingToolbarClearance + 80.dp
 
 @Composable
@@ -104,6 +111,7 @@ fun CalendarScreen(
     var selectedCalendarId by remember { mutableStateOf<Long?>(null) }
     var showAgendaSearch by remember { mutableStateOf(false) }
     var showAgendaFilters by remember { mutableStateOf(false) }
+    var showHorarioOptions by remember { mutableStateOf(false) }
     var selectedEventIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var confirmBatchDelete by remember { mutableStateOf(false) }
     var showExportInfo by remember { mutableStateOf(false) }
@@ -136,6 +144,15 @@ fun CalendarScreen(
                 viewModel.applyAgendaFilters(kinds, institutions)
                 showAgendaFilters = false
             },
+        )
+    }
+    if (showHorarioOptions) {
+        HorarioOptionsSheet(
+            showLocation = state.horarioShowLocation,
+            shortDayLabels = state.horarioShortDayLabels,
+            onSetShowLocation = { viewModel.setHorarioDisplay(it, state.horarioShortDayLabels) },
+            onSetShortDayLabels = { viewModel.setHorarioDisplay(state.horarioShowLocation, it) },
+            onDismiss = { showHorarioOptions = false },
         )
     }
     if (confirmBatchDelete) {
@@ -277,6 +294,11 @@ fun CalendarScreen(
                         }
                         IconButton(onClick = { showAgendaSearch = !showAgendaSearch }) { Icon(Icons.Outlined.Search, contentDescription = "Buscar en agenda") }
                     }
+                    if (state.presentation == CalendarPresentation.HORARIO) {
+                        IconButton(onClick = { showHorarioOptions = true }, modifier = Modifier.testTag("horario-options-action")) {
+                            Icon(Icons.Outlined.Tune, contentDescription = "Opciones de horario")
+                        }
+                    }
                     IconButton(onClick = onOpenSettings) {
                         Icon(Icons.Outlined.Settings, contentDescription = "Ajustes")
                     }
@@ -286,12 +308,11 @@ fun CalendarScreen(
                 viewModel.setCourseQuery("")
                 showAgendaSearch = false
             }
-            if (expanded) {
+            if (expanded && state.presentation != CalendarPresentation.WEEK) {
                 Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-                    MonthPanel(state.month, state.events, viewModel::setMonth, floatingContentClearance, Modifier.weight(0.8f).fillMaxHeight())
+                    WeekPanel(state.weekStart, state.events, state.use12hClock, viewModel::setWeek, onEvent = { editor = it }, trailingContentClearance = floatingContentClearance, modifier = Modifier.weight(0.8f).fillMaxHeight())
                     when (state.presentation) {
-                        CalendarPresentation.HORARIO -> HorarioPanel(state.events, state.use12hClock, state.courseStyles, onSlotClick = { editor = it }, onSaveStyle = viewModel::saveCourseStyle, onDeleteSeries = { viewModel.deleteClassSeries(it.title, it.day, it.start, it.end) }, trailingContentClearance = floatingContentClearance, modifier = Modifier.weight(1.2f))
-                        CalendarPresentation.MONTH -> Agenda(state.events, state.loading, state.use12hClock, onEvent = { editor = it }, trailingContentClearance = floatingContentClearance, modifier = Modifier.weight(1.2f))
+                        CalendarPresentation.HORARIO -> HorarioPanel(state.events, state.use12hClock, state.courseStyles, onSlotClick = { editor = it }, onSaveStyle = viewModel::saveCourseStyle, onDeleteSeries = { viewModel.deleteClassSeries(it.title, it.day, it.start, it.end) }, showLocation = state.horarioShowLocation, shortDayLabels = state.horarioShortDayLabels, trailingContentClearance = floatingContentClearance, modifier = Modifier.weight(1.2f))
                         CalendarPresentation.AGENDA -> Agenda(
                             state.agendaEvents,
                             state.loading,
@@ -305,11 +326,12 @@ fun CalendarScreen(
                             trailingContentClearance = floatingContentClearance,
                             modifier = Modifier.weight(1.2f),
                         )
+                        CalendarPresentation.WEEK -> Unit // handled by the full-width branch below
                     }
                 }
             } else when (state.presentation) {
-                CalendarPresentation.HORARIO -> HorarioPanel(state.events, state.use12hClock, state.courseStyles, onSlotClick = { editor = it }, onSaveStyle = viewModel::saveCourseStyle, onDeleteSeries = { viewModel.deleteClassSeries(it.title, it.day, it.start, it.end) }, trailingContentClearance = floatingContentClearance, modifier = Modifier.weight(1f))
-                CalendarPresentation.MONTH -> MonthPanel(state.month, state.events, viewModel::setMonth, floatingContentClearance, Modifier.weight(1f))
+                CalendarPresentation.HORARIO -> HorarioPanel(state.events, state.use12hClock, state.courseStyles, onSlotClick = { editor = it }, onSaveStyle = viewModel::saveCourseStyle, onDeleteSeries = { viewModel.deleteClassSeries(it.title, it.day, it.start, it.end) }, showLocation = state.horarioShowLocation, shortDayLabels = state.horarioShortDayLabels, trailingContentClearance = floatingContentClearance, modifier = Modifier.weight(1f))
+                CalendarPresentation.WEEK -> WeekPanel(state.weekStart, state.events, state.use12hClock, viewModel::setWeek, onEvent = { editor = it }, trailingContentClearance = floatingContentClearance, modifier = Modifier.weight(1f))
                 CalendarPresentation.AGENDA -> Agenda(
                     state.agendaEvents,
                     state.loading,
@@ -340,7 +362,7 @@ private fun CalendarControls(state: CalendarUiState, viewModel: CalendarViewMode
                     shape = SegmentedButtonDefaults.itemShape(index = index, count = CalendarPresentation.values().size),
                     label = { Text(when (mode) {
                         CalendarPresentation.HORARIO -> "Horario"
-                        CalendarPresentation.MONTH -> "Mes"
+                        CalendarPresentation.WEEK -> "Semana"
                         CalendarPresentation.AGENDA -> "Agenda"
                     }) },
                 )
@@ -444,56 +466,166 @@ private fun Agenda(
 
 private fun Set<String>.toggle(id: String): Set<String> = if (id in this) this - id else this + id
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun MonthPanel(
-    month: YearMonth,
+private fun HorarioOptionsSheet(
+    showLocation: Boolean,
+    shortDayLabels: Boolean,
+    onSetShowLocation: (Boolean) -> Unit,
+    onSetShortDayLabels: (Boolean) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text("Opciones de horario", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+            OptionSwitchRow("Mostrar ubicación", "Ver el aula o lugar en cada bloque de clase.", showLocation, onSetShowLocation)
+            OptionSwitchRow("Etiquetas de día cortas", "Usar “Lun.”, “Mar.”… en vez de los nombres completos.", shortDayLabels, onSetShortDayLabels)
+            Spacer(Modifier.height(8.dp))
+            Row(Modifier.fillMaxWidth().padding(bottom = 12.dp), horizontalArrangement = Arrangement.End) {
+                TextButton(onClick = onDismiss) { Text("Listo") }
+            }
+        }
+    }
+}
+
+@Composable
+private fun OptionSwitchRow(title: String, description: String, checked: Boolean, onToggle: (Boolean) -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clickable { onToggle(!checked) }.padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge)
+            Text(description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Switch(checked = checked, onCheckedChange = onToggle)
+    }
+}
+
+private sealed interface WeekRow {
+    data class Header(val date: LocalDate) : WeekRow
+    data class Event(val event: CampusEvent) : WeekRow
+}
+
+@Composable
+private fun WeekPanel(
+    weekStart: LocalDate,
     events: List<CampusEvent>,
-    onMonth: (YearMonth) -> Unit,
+    use12h: Boolean,
+    onWeek: (LocalDate) -> Unit,
+    onEvent: (CampusEvent) -> Unit,
     trailingContentClearance: androidx.compose.ui.unit.Dp = 0.dp,
     modifier: Modifier = Modifier,
 ) {
-    val today = java.time.LocalDate.now()
-    Column(modifier.testTag("calendar-month-content").verticalScroll(rememberScrollState()).padding(vertical = 8.dp)) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            IconButton(onClick = { onMonth(month.minusMonths(1)) }) {
-                Icon(Icons.Outlined.ChevronLeft, contentDescription = "Mes anterior")
-            }
-            Text(month.atDay(1).format(monthFormatter).replaceFirstChar { it.titlecase() }, style = MaterialTheme.typography.titleLarge)
-            IconButton(onClick = { onMonth(month.plusMonths(1)) }) {
-                Icon(Icons.Outlined.ChevronRight, contentDescription = "Mes siguiente")
+    val today = LocalDate.now()
+    val days = remember(weekStart) { weekDays(weekStart) }
+    val weekEnd = weekStart.plusDays(7)
+    // Classes live in the Horario view; the Semana list is for everything else (exams, tareas, etc.).
+    val byDay = remember(events, weekStart) {
+        events.asSequence()
+            .filter { it.kind != EventKind.CLASS }
+            .filter { val d = it.start.toLocalDate(); !d.isBefore(weekStart) && d.isBefore(weekEnd) }
+            .sortedBy { it.start }
+            .groupBy { it.start.toLocalDate() }
+    }
+    // Flatten to header/event rows and remember where each day's header lands so the strip can scroll to it.
+    val rows = remember(byDay, weekStart) {
+        buildList {
+            days.forEach { day ->
+                val dayEvents = byDay[day].orEmpty()
+                if (dayEvents.isNotEmpty()) {
+                    add(WeekRow.Header(day))
+                    dayEvents.forEach { add(WeekRow.Event(it)) }
+                }
             }
         }
-        Row(Modifier.fillMaxWidth()) {
-            listOf("L", "M", "X", "J", "V", "S", "D").forEach { label ->
-                Text(label, modifier = Modifier.weight(1f), style = MaterialTheme.typography.labelMedium)
+    }
+    val dayIndex = remember(rows) {
+        rows.withIndex().filter { it.value is WeekRow.Header }.associate { (index, row) -> (row as WeekRow.Header).date to index }
+    }
+    val listState = rememberLazyListState()
+    val scope = rememberCoroutineScope()
+    Column(modifier.testTag("calendar-week-content").padding(vertical = 8.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = { onWeek(weekStart.minusDays(7)) }) {
+                Icon(Icons.Outlined.ChevronLeft, contentDescription = "Semana anterior")
+            }
+            Text(
+                "${weekStart.format(weekRangeFormatter)} – ${weekStart.plusDays(6).format(weekRangeFormatter)}",
+                style = MaterialTheme.typography.titleMedium,
+            )
+            IconButton(onClick = { onWeek(weekStart.plusDays(7)) }) {
+                Icon(Icons.Outlined.ChevronRight, contentDescription = "Semana siguiente")
             }
         }
-        val leadingEmptyDays = month.atDay(1).dayOfWeek.value - 1
-        val cells = List<Int?>(leadingEmptyDays) { null } + (1..month.lengthOfMonth()).map { it }
-        cells.chunked(7).forEach { week ->
-            Row(Modifier.fillMaxWidth()) {
-                week.forEach { day ->
-                    val date = day?.let { month.atDay(it) }
-                    val count = date?.let { value -> events.count { it.start.toLocalDate() == value } } ?: 0
-                    val isToday = date == today
-                    Column(Modifier.weight(1f).padding(5.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                        if (isToday) {
-                            Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp)) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Text(day?.toString().orEmpty(), color = MaterialTheme.colorScheme.onPrimary, style = MaterialTheme.typography.labelMedium)
-                                }
+        Row(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+            days.forEach { date ->
+                val isToday = date == today
+                val hasEvents = date in dayIndex
+                Column(
+                    Modifier
+                        .weight(1f)
+                        .clickable(enabled = hasEvents) { dayIndex[date]?.let { target -> scope.launch { listState.animateScrollToItem(target) } } }
+                        .padding(vertical = 4.dp)
+                        .semantics { contentDescription = "${dayStripName(date.dayOfWeek)} ${date.dayOfMonth}${if (hasEvents) ", con eventos" else ""}" },
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(3.dp),
+                ) {
+                    Text(dayStripName(date.dayOfWeek), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (isToday) {
+                        Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp)) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text(date.dayOfMonth.toString(), color = MaterialTheme.colorScheme.onPrimary, style = MaterialTheme.typography.labelLarge)
                             }
-                        } else {
-                            Text(day?.toString().orEmpty())
                         }
-                        if (count > 0) {
-                            Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primary, modifier = Modifier.size(6.dp)) {}
+                    } else {
+                        Box(Modifier.size(28.dp), contentAlignment = Alignment.Center) {
+                            Text(date.dayOfMonth.toString(), style = MaterialTheme.typography.labelLarge)
                         }
                     }
+                    Surface(
+                        shape = CircleShape,
+                        color = if (hasEvents) MaterialTheme.colorScheme.primary else Color.Transparent,
+                        modifier = Modifier.size(6.dp),
+                    ) {}
                 }
-                repeat(7 - week.size) { Column(Modifier.weight(1f)) {} }
             }
         }
-        Spacer(Modifier.height(trailingContentClearance))
+        if (rows.isEmpty()) {
+            EmptyState("Sin eventos esta semana", "Cambia de semana o crea un evento para verlo aquí.")
+        } else {
+            LazyColumn(
+                Modifier.fillMaxWidth().weight(1f),
+                state = listState,
+                contentPadding = PaddingValues(bottom = trailingContentClearance),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                items(rows, key = { row -> when (row) {
+                    is WeekRow.Header -> "header-${row.date}"
+                    is WeekRow.Event -> row.event.id
+                } }) { row ->
+                    when (row) {
+                        is WeekRow.Header -> Text(
+                            row.date.format(daySectionFormatter).replaceFirstChar { it.titlecase() },
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.padding(top = 4.dp),
+                        )
+                        is WeekRow.Event -> EventCard(row.event, onClick = { onEvent(row.event) }, use12h = use12h)
+                    }
+                }
+            }
+        }
     }
+}
+
+private fun dayStripName(day: DayOfWeek) = when (day) {
+    DayOfWeek.MONDAY -> "Lun."
+    DayOfWeek.TUESDAY -> "Mar."
+    DayOfWeek.WEDNESDAY -> "Mié."
+    DayOfWeek.THURSDAY -> "Jue."
+    DayOfWeek.FRIDAY -> "Vie."
+    DayOfWeek.SATURDAY -> "Sáb."
+    DayOfWeek.SUNDAY -> "Dom."
 }

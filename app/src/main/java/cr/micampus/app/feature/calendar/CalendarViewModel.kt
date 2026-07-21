@@ -23,9 +23,14 @@ import kotlinx.coroutines.launch
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalTime
-import java.time.YearMonth
 
-enum class CalendarPresentation { HORARIO, MONTH, AGENDA }
+enum class CalendarPresentation { HORARIO, WEEK, AGENDA }
+
+/** The Monday on or before [date]; the anchor for the "Esta semana" view. */
+fun mondayOf(date: LocalDate): LocalDate = date.minusDays((date.dayOfWeek.value - 1).toLong())
+
+/** The seven consecutive days (Mon–Sun) of the week anchored at [weekStart]. */
+fun weekDays(weekStart: LocalDate): List<LocalDate> = (0L..6L).map(weekStart::plusDays)
 
 data class CalendarFilters(
     val excludedInstitutions: Set<Institution> = emptySet(),
@@ -43,7 +48,7 @@ internal fun filterAgendaEvents(events: List<CampusEvent>, filters: CalendarFilt
 data class CalendarUiState(
     val loading: Boolean = true,
     val presentation: CalendarPresentation = CalendarPresentation.HORARIO,
-    val month: YearMonth = YearMonth.now(),
+    val weekStart: LocalDate = mondayOf(LocalDate.now()),
     val filters: CalendarFilters = CalendarFilters(),
     val events: List<CampusEvent> = emptyList(),
     val agendaEvents: List<CampusEvent> = emptyList(),
@@ -52,6 +57,8 @@ data class CalendarUiState(
     val confirmationPending: Boolean = false,
     val enabledInstitutions: List<Institution> = Institution.values().toList(),
     val use12hClock: Boolean = false,
+    val horarioShowLocation: Boolean = true,
+    val horarioShortDayLabels: Boolean = true,
     val semesterStart: LocalDate? = null,
     val semesterEnd: LocalDate? = null,
 ) {
@@ -80,6 +87,8 @@ class CalendarViewModel(
             agendaEvents = filterAgendaEvents(events, agendaFilters),
             enabledInstitutions = enabled,
             use12hClock = appSettings.use12hClock,
+            horarioShowLocation = appSettings.horarioShowLocation,
+            horarioShortDayLabels = appSettings.horarioShortDayLabels,
             semesterStart = appSettings.semesterStart,
             semesterEnd = appSettings.semesterEnd,
             courseStyles = courseStyles,
@@ -87,8 +96,12 @@ class CalendarViewModel(
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), CalendarUiState())
 
     fun setPresentation(value: CalendarPresentation) = controls.update { it.copy(presentation = value) }
-    fun setMonth(value: YearMonth) = controls.update { it.copy(month = value) }
+    fun setWeek(value: LocalDate) = controls.update { it.copy(weekStart = mondayOf(value)) }
     fun setCourseQuery(value: String) = controls.update { it.copy(filters = it.filters.copy(courseQuery = value)) }
+    fun setHorarioDisplay(showLocation: Boolean, shortDayLabels: Boolean) = viewModelScope.launch {
+        settings.setHorarioDisplay(showLocation, shortDayLabels)
+        onDataChanged()
+    }
     fun applyAgendaFilters(excludedKinds: Set<EventKind>, excludedInstitutions: Set<Institution>) = viewModelScope.launch {
         settings.setAgendaFilters(excludedKinds, excludedInstitutions)
         onDataChanged()

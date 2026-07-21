@@ -13,6 +13,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -24,6 +26,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.FilterList
 import androidx.compose.material.icons.outlined.Key
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -31,6 +34,8 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
@@ -566,7 +571,15 @@ private fun AcademicProgressCard(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
     ) {
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("Progreso académico", style = MaterialTheme.typography.titleMedium)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Progreso académico", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                val activeFilters = activeProgressFilterCount(filter)
+                BadgedBox(badge = { if (activeFilters > 0) Badge { Text(activeFilters.toString()) } }) {
+                    IconButton(onClick = { showFilters = true }, modifier = Modifier.testTag("academic-progress-filter")) {
+                        Icon(Icons.Outlined.FilterList, contentDescription = "Filtrar progreso académico")
+                    }
+                }
+            }
             Text(progressFilterSummary(filter), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             when (state) {
                 AcademicProgressUiState.Loading -> { CircularProgressIndicator(); Text("Consultando Banner…") }
@@ -577,14 +590,12 @@ private fun AcademicProgressCard(
                     emptyProgressMessage(terms, filter),
                     null,
                     onRefresh,
-                    onFilter = { showFilters = true },
                 )
                 is AcademicProgressUiState.StaleError -> ProgressDetails(
                     state.progress,
                     emptyProgressMessage(terms, filter),
                     state.message,
                     onRefresh,
-                    onFilter = { showFilters = true },
                 )
             }
         }
@@ -597,7 +608,6 @@ private fun ProgressDetails(
     emptyMessage: String,
     warning: String?,
     onRefresh: () -> Unit,
-    onFilter: () -> Unit,
 ) {
     val percentage = progress.percentage
     Text(percentage?.let { String.format(Locale.getDefault(), "%.1f %%", it) } ?: emptyMessage)
@@ -612,9 +622,13 @@ private fun ProgressDetails(
     }
     Text("Actualizado: ${formatSyncTime(progress.updatedAtEpoch)}", style = MaterialTheme.typography.bodySmall)
     warning?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
-    TextButton(onClick = onFilter) { Text("Filtrar") }
     TextButton(onClick = onRefresh) { Text(if (warning == null) "Actualizar progreso" else "Reintentar") }
 }
+
+private fun activeProgressFilterCount(filter: AcademicProgressFilter): Int =
+    (if (filter.year != null) 1 else 0) +
+        (if (filter.cycle != null) 1 else 0) +
+        (if (filter.unfinishedPolicy != UnfinishedCoursePolicy.EXCLUDE) 1 else 0)
 
 @Composable
 private fun AcademicProgressFilterDialog(

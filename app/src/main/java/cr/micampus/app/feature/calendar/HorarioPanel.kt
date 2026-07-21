@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import cr.micampus.app.core.designsystem.formatTimeRange
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
@@ -99,6 +100,8 @@ fun HorarioPanel(
     onSlotClick: (CampusEvent) -> Unit,
     onSaveStyle: (CourseStyle) -> Unit,
     onDeleteSeries: (ScheduleSlot) -> Unit,
+    showLocation: Boolean = true,
+    shortDayLabels: Boolean = true,
     trailingContentClearance: androidx.compose.ui.unit.Dp = 0.dp,
     modifier: Modifier = Modifier,
 ) {
@@ -126,61 +129,73 @@ fun HorarioPanel(
     }
     val minuteHeight = 1.1.dp
     val headerHeight = 40.dp
+    // Narrow time gutter (within the 46–52dp band) to reclaim space without cramping the columns.
+    val gutterWidth = 46.dp
+    // Keep each lane wide enough that times and locations aren't truncated; the week scrolls
+    // horizontally when it can't fit, and fills the screen when it can.
+    val minLaneWidth = 120.dp
     val axisMinutes = Duration.between(axis.start, axis.end).toMinutes().toInt().coerceAtLeast(0)
     val axisHeight = (minuteHeight * axisMinutes.toFloat()).coerceAtLeast(1.dp)
     val verticalScroll = rememberScrollState()
     val horizontalScroll = rememberScrollState()
-    Column(modifier.testTag("calendar-schedule-content").verticalScroll(verticalScroll)) {
-        Row(Modifier.fillMaxWidth().horizontalScroll(horizontalScroll).widthIn(min = (48 + days.size * 96).dp)) {
-            Column(Modifier.width(48.dp)) {
-                // Offset the hour gutter by the day-header height so hour labels line up with the blocks below.
-                Spacer(Modifier.height(headerHeight))
-                (0..axisMinutes / 60).forEach { hour ->
-                    val time = axis.start.plusHours(hour.toLong())
-                    Text(time.format(formatter), style = MaterialTheme.typography.labelSmall, modifier = Modifier.height(minuteHeight * 60f))
-                }
-            }
-            days.forEach { day ->
-                val daySlots = slots.filter { it.day == day }
-                val lanes = packLanes(daySlots)
-                val laneCount = ((lanes.maxOfOrNull { it.second } ?: -1) + 1).coerceAtLeast(1)
-                // Grow the column so each lane keeps a ≥72dp (well above the 48dp minimum) touch target.
-                val columnWidth = maxOf(96.dp, (72 * laneCount).dp)
-                Column(Modifier.width(columnWidth)) {
-                    Box(Modifier.height(headerHeight).padding(horizontal = 4.dp, vertical = 8.dp)) {
-                        Text(dayLabel(day), style = MaterialTheme.typography.labelLarge)
+    val laneCounts = remember(slots, days) {
+        days.associateWith { day -> ((packLanes(slots.filter { it.day == day }).maxOfOrNull { it.second } ?: -1) + 1).coerceAtLeast(1) }
+    }
+    BoxWithConstraints(modifier.testTag("calendar-schedule-content")) {
+        val totalLanes = laneCounts.values.sum().coerceAtLeast(1)
+        // Distribute the available width across lanes, but never below the readable minimum.
+        val laneWidth = maxOf(minLaneWidth, (maxWidth - gutterWidth) / totalLanes)
+        Column(Modifier.verticalScroll(verticalScroll)) {
+            Row(Modifier.horizontalScroll(horizontalScroll)) {
+                Column(Modifier.width(gutterWidth)) {
+                    // Offset the hour gutter by the day-header height so hour labels line up with the blocks below.
+                    Spacer(Modifier.height(headerHeight))
+                    (0..axisMinutes / 60).forEach { hour ->
+                        val time = axis.start.plusHours(hour.toLong())
+                        Text(time.format(formatter), style = MaterialTheme.typography.labelSmall, modifier = Modifier.height(minuteHeight * 60f))
                     }
-                    BoxWithConstraints(Modifier.height(axisHeight).fillMaxWidth()) {
-                        lanes.forEach { (slot, lane) ->
-                            val minutesFromStart = Duration.between(axis.start, slot.start).toMinutes().toInt().coerceAtLeast(0)
-                            val duration = Duration.between(slot.start, slot.end).toMinutes().toInt().coerceAtLeast(0)
-                            val height = (minuteHeight * duration.toFloat()).coerceAtLeast(48.dp)
-                            val (container, onContainer) = palette[colors.getValue(slot.title)]
-                            Surface(
-                                onClick = { styleSlot = slot },
-                                color = container,
-                                contentColor = onContainer,
-                                modifier = Modifier
-                                    .offset(x = maxWidth / laneCount * lane, y = minuteHeight * minutesFromStart.toFloat())
-                                    .width(maxWidth / laneCount)
-                                    .height(height)
-                                    .padding(2.dp)
-                                    .semantics {
-                                        contentDescription = "${slot.title}, ${dayLabel(slot.day).lowercase()} de ${slot.start.format(formatter)} a ${slot.end.format(formatter)}"
-                                    },
-                            ) {
-                                Column(Modifier.fillMaxSize().padding(6.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                    Text(listOfNotNull(styles[slot.title]?.emoji?.takeIf(String::isNotBlank), slot.title).joinToString(" "), style = MaterialTheme.typography.labelLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                                    if (height >= 82.dp) Text("${slot.start.format(formatter)}–${slot.end.format(formatter)}", style = MaterialTheme.typography.labelSmall)
-                                    if (height >= 112.dp && slot.event.location.isNotBlank()) Text(slot.event.location, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                days.forEach { day ->
+                    val daySlots = slots.filter { it.day == day }
+                    val lanes = packLanes(daySlots)
+                    val laneCount = laneCounts.getValue(day)
+                    val columnWidth = laneWidth * laneCount
+                    Column(Modifier.width(columnWidth)) {
+                        Box(Modifier.height(headerHeight).padding(horizontal = 4.dp, vertical = 8.dp)) {
+                            Text(dayHeaderLabel(day, shortDayLabels), style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                        Box(Modifier.height(axisHeight).fillMaxWidth()) {
+                            lanes.forEach { (slot, lane) ->
+                                val minutesFromStart = Duration.between(axis.start, slot.start).toMinutes().toInt().coerceAtLeast(0)
+                                val duration = Duration.between(slot.start, slot.end).toMinutes().toInt().coerceAtLeast(0)
+                                val height = (minuteHeight * duration.toFloat()).coerceAtLeast(48.dp)
+                                val (container, onContainer) = palette[colors.getValue(slot.title)]
+                                Surface(
+                                    onClick = { styleSlot = slot },
+                                    color = container,
+                                    contentColor = onContainer,
+                                    modifier = Modifier
+                                        .offset(x = laneWidth * lane, y = minuteHeight * minutesFromStart.toFloat())
+                                        .width(laneWidth)
+                                        .height(height)
+                                        .padding(horizontal = 2.dp, vertical = 2.dp)
+                                        .semantics {
+                                            contentDescription = "${slot.title}, ${dayLabel(slot.day).lowercase()} de ${slot.start.format(formatter)} a ${slot.end.format(formatter)}"
+                                        },
+                                ) {
+                                    Column(Modifier.fillMaxSize().padding(horizontal = 6.dp, vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                        Text(listOfNotNull(styles[slot.title]?.emoji?.takeIf(String::isNotBlank), slot.title).joinToString(" "), style = MaterialTheme.typography.labelLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                        if (height >= 58.dp) Text(formatTimeRange(slot.event.start, slot.event.end, use12h), style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        if (showLocation && height >= 84.dp && slot.event.location.isNotBlank()) Text(slot.event.location, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    }
                                 }
                             }
                         }
                     }
                 }
             }
+            Spacer(Modifier.height(trailingContentClearance))
         }
-        Spacer(Modifier.height(trailingContentClearance))
     }
     styleSlot?.let { slot ->
         CourseStyleDialog(
@@ -225,6 +240,8 @@ private fun CourseStyleDialog(
         title = { Text("Estilo de ${slot.title}") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                if (slot.event.location.isNotBlank()) Text("Ubicación: ${slot.event.location}", style = MaterialTheme.typography.bodyMedium)
+                if (slot.event.notes.isNotBlank()) Text(slot.event.notes, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 OutlinedTextField(
                     value = emoji,
                     onValueChange = { emoji = it.take(2) },
@@ -262,3 +279,15 @@ private fun dayLabel(day: DayOfWeek) = when (day) {
     DayOfWeek.SATURDAY -> "Sábado"
     DayOfWeek.SUNDAY -> "Domingo"
 }
+
+private fun dayShort(day: DayOfWeek) = when (day) {
+    DayOfWeek.MONDAY -> "Lun."
+    DayOfWeek.TUESDAY -> "Mar."
+    DayOfWeek.WEDNESDAY -> "Mié."
+    DayOfWeek.THURSDAY -> "Jue."
+    DayOfWeek.FRIDAY -> "Vie."
+    DayOfWeek.SATURDAY -> "Sáb."
+    DayOfWeek.SUNDAY -> "Dom."
+}
+
+private fun dayHeaderLabel(day: DayOfWeek, short: Boolean) = if (short) dayShort(day) else dayLabel(day)
