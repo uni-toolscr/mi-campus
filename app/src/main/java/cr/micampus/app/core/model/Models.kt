@@ -48,6 +48,9 @@ data class CampusEvent(
     val sourceDocumentId: String? = null,
     val notifyThirtyMinutesBefore: Boolean = false,
 )
+/** An event has expired once its end time is strictly in the past relative to [now]. */
+fun CampusEvent.isExpired(now: LocalDateTime): Boolean = end.isBefore(now)
+
 data class CourseStyle(val courseKey: String, val colorIndex: Int, val emoji: String? = null)
 data class TransportDirection(val id: String, val from: String, val to: String, val weekdays: List<String>, val saturday: List<String> = emptyList())
 data class TransportDataset(

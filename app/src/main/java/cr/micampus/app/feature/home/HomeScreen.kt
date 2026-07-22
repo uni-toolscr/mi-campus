@@ -29,10 +29,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import cr.micampus.app.core.designsystem.EmptyState
 import cr.micampus.app.core.designsystem.FloatingToolbarClearance
@@ -118,12 +120,17 @@ fun EventCard(
     onLongClick: (() -> Unit)? = null,
     selected: Boolean = false,
     use12h: Boolean = false,
+    expired: Boolean = false,
 ) {
+    val strike = if (expired) TextDecoration.LineThrough else null
     val content: @Composable () -> Unit = {
-        Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(
+            Modifier.padding(16.dp).then(if (expired) Modifier.alpha(0.6f) else Modifier),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(event.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-                Text("${event.start.format(eventDateTimeFormatter(use12h))} – ${event.end.toLocalTime().format(timeFormatter(use12h))}")
+                Text(event.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, textDecoration = strike)
+                Text("${event.start.format(eventDateTimeFormatter(use12h))} – ${event.end.toLocalTime().format(timeFormatter(use12h))}", textDecoration = strike)
                 Text(event.institution.name + " · " + eventKindLabel(event.kind), color = MaterialTheme.colorScheme.primary)
                 if (event.location.isNotBlank()) Text(event.location, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (event.notes.isNotBlank()) Text(event.notes, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -141,7 +148,11 @@ fun EventCard(
             .combinedClickable(onClick = { onClick?.invoke() }, onLongClick = onLongClick)
             .semantics {
                 this.selected = selected
-                contentDescription = if (selected) "Evento seleccionado: ${event.title}" else "Evento: ${event.title}"
+                contentDescription = when {
+                    selected -> "Evento seleccionado: ${event.title}"
+                    expired -> "Evento vencido: ${event.title}"
+                    else -> "Evento: ${event.title}"
+                }
             },
         colors = colors,
     ) { content() }

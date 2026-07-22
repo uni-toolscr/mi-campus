@@ -84,11 +84,14 @@ import cr.micampus.app.core.designsystem.safeHorizontalInsets
 import cr.micampus.app.core.model.CampusEvent
 import cr.micampus.app.core.model.EventKind
 import cr.micampus.app.core.model.Institution
+import cr.micampus.app.core.model.isExpired
 import cr.micampus.app.feature.home.EventCard
 import cr.micampus.app.platform.calendar.CalendarChoice
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.time.DayOfWeek
 import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
@@ -443,6 +446,7 @@ private fun Agenda(
     trailingContentClearance: androidx.compose.ui.unit.Dp = 0.dp,
     modifier: Modifier = Modifier,
 ) {
+    val now = rememberCurrentMinute()
     when {
         loading -> LoadingState()
         events.isEmpty() -> EmptyState("No hay eventos", "Ajusta los filtros, crea un evento o importa un PDF.")
@@ -458,10 +462,24 @@ private fun Agenda(
                     onLongClick = onLongPress?.let { action -> { action(event) } },
                     selected = event.id in selectedIds,
                     use12h = use12hClock,
+                    expired = event.isExpired(now),
                 )
             }
         }
     }
+}
+
+/** Current wall-clock time that refreshes about once a minute so expiry styling flips live. */
+@Composable
+private fun rememberCurrentMinute(): LocalDateTime {
+    var now by remember { mutableStateOf(LocalDateTime.now()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(60_000)
+            now = LocalDateTime.now()
+        }
+    }
+    return now
 }
 
 private fun Set<String>.toggle(id: String): Set<String> = if (id in this) this - id else this + id
@@ -518,7 +536,8 @@ private fun WeekPanel(
     trailingContentClearance: androidx.compose.ui.unit.Dp = 0.dp,
     modifier: Modifier = Modifier,
 ) {
-    val today = LocalDate.now()
+    val now = rememberCurrentMinute()
+    val today = now.toLocalDate()
     val days = remember(weekStart) { weekDays(weekStart) }
     val weekEnd = weekStart.plusDays(7)
     // Classes live in the Horario view; the Semana list is for everything else (exams, tareas, etc.).
@@ -612,7 +631,7 @@ private fun WeekPanel(
                             fontWeight = FontWeight.SemiBold,
                             modifier = Modifier.padding(top = 4.dp),
                         )
-                        is WeekRow.Event -> EventCard(row.event, onClick = { onEvent(row.event) }, use12h = use12h)
+                        is WeekRow.Event -> EventCard(row.event, onClick = { onEvent(row.event) }, use12h = use12h, expired = row.event.isExpired(now))
                     }
                 }
             }
