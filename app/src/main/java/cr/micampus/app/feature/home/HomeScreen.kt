@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -18,8 +17,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.DirectionsBus
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Settings
-import androidx.compose.material.icons.outlined.UploadFile
-import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ElevatedCard
@@ -47,7 +44,7 @@ import cr.micampus.app.core.model.CampusEvent
 import cr.micampus.app.core.model.EventKind
 import cr.micampus.app.data.institution.UpcomingDeparture
 @Composable
-fun HomeScreen(state: HomeUiState, onImport: () -> Unit, onOpenSettings: () -> Unit) {
+fun HomeScreen(state: HomeUiState, onOpenSettings: () -> Unit) {
     LazyColumn(
         Modifier.fillMaxSize().safeHorizontalInsets().padding(horizontal = 20.dp),
         contentPadding = edgeToEdgeContentPadding(bottomExtra = FloatingToolbarClearance),
@@ -61,17 +58,6 @@ fun HomeScreen(state: HomeUiState, onImport: () -> Unit, onOpenSettings: () -> U
                 }
             }
             Text("Tu campus, disponible sin conexión", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        item {
-            Button(
-                onClick = onImport,
-                modifier = Modifier.fillMaxWidth().height(56.dp),
-                shape = RoundedCornerShape(28.dp),
-            ) {
-                Icon(Icons.Outlined.UploadFile, contentDescription = null)
-                Spacer(Modifier.width(8.dp))
-                Text("Importar carta al estudiante (PDF)", style = MaterialTheme.typography.titleMedium)
-            }
         }
         if (state.loading) item { LoadingState() }
         else {

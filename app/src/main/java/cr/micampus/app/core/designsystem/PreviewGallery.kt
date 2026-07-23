@@ -27,7 +27,7 @@ private fun OnboardingPreview() {
 private fun EmptyHomePreview() {
     MiCampusTheme(dynamicColor = false) {
         AppBackgroundSurface {
-            HomeScreen(HomeUiState(loading = false), {}, {})
+            HomeScreen(HomeUiState(loading = false), {})
         }
     }
 }
@@ -37,7 +37,7 @@ private fun EmptyHomePreview() {
 private fun DarkHomePreview() {
     MiCampusTheme(themeMode = ThemeMode.DARK, dynamicColor = false) {
         AppBackgroundSurface {
-            HomeScreen(HomeUiState(loading = false), {}, {})
+            HomeScreen(HomeUiState(loading = false), {})
         }
     }
 }

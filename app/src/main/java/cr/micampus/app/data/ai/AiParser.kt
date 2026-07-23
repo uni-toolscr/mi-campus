@@ -39,7 +39,8 @@ object SyllabusPrompt {
             "(5) events: SOLO eventos con fecha propia: exámenes, pruebas, quices, tareas, entregas o actividades, con category (EXAM, QUIZ, TAREA, ACTIVITY u OTHER). Nunca incluyas ocurrencias de clases regulares en events; pertenecen únicamente a weeks. Para cada evento usa title corto y description con el detalle si existe.\n" +
             "## REGLAS\nNunca inventes valores; cuando falte un dato anidado omite su clave. Usa fechas AAAA-MM-DD y horas HH:MM. " +
             "Conserva el texto original de fechas ambiguas y evidencia breve con su página. " +
-            "Las cinco claves raíz siempre deben existir; course puede ser null y los arreglos sin resultados deben ser []. En objetos anidados omite las claves desconocidas; no uses null allí. No uses Markdown ni texto fuera del JSON. " +
+            "Las cinco claves raíz siempre deben existir; course puede ser null y los arreglos sin resultados deben ser []. En objetos anidados omite las claves desconocidas; no uses null allí. " +
+            "Si el documento no contiene eventos con fecha propia ni un horario de clases, esto es válido: devuelve el contrato vacío ({\"course\":null,\"groups\":[],\"weeks\":[],\"holidays\":[],\"events\":[]}) y nada más. No inventes eventos para llenarlo. No uses Markdown ni texto fuera del JSON. " +
             "Responde con JSON compacto, sin espacios ni saltos de línea innecesarios."
     const val SHAPE =
         "## CONTRATO JSON\nDevuelve SOLO un objeto JSON válido. Las claves raíz obligatorias son exactamente \"course\", \"groups\", \"weeks\", \"holidays\", \"events\". " +
@@ -1014,6 +1015,8 @@ interface CloudEventEngine {
 }
 sealed class ExtractionOutcome {
     data class Drafts(val drafts: List<CalendarEventDraft>, val syllabus: ExtractedSyllabus? = null, val modelsUsed: Set<String> = emptySet()) : ExtractionOutcome()
+    /** Valid document with no schedulable events: still usable as an AI source, not a failure. */
+    data class NoEvents(val modelsUsed: Set<String> = emptySet()) : ExtractionOutcome()
     data class Manual(val reason: String) : ExtractionOutcome()
     data class NeedsDownload(val capability: NanoCapability) : ExtractionOutcome()
     data class NeedsConsent(val importId: String) : ExtractionOutcome()
@@ -1067,7 +1070,14 @@ class EventExtractionEngine(
                         is LocalExtraction.Success -> if (localResult.parse.drafts.isNotEmpty() || localResult.parse.syllabus.canExpandClasses) {
                             return outcome(localResult.parse, existing, assumedInstitution, localResult.modelsUsed)
                         } else {
-                            localFallback(importId, NanoFailureKind.RESPONSE_REJECTED, retryable = false)?.let { return it }
+                            // Valid document with no schedulable events: keep it as an AI source
+                            // instead of escalating to the cloud. Malformed local output is handled
+                            // separately in extractLocally() and still fails.
+                            diagnostics.record(
+                                diagnosticTraceId,
+                                ImportDiagnosticEvent(phase = "routing_decision", backend = "local", outcome = "no_events"),
+                            )
+                            return ExtractionOutcome.NoEvents(localResult.modelsUsed)
                         }
                         is LocalExtraction.Failed -> {
                             // Once the user already granted cloud consent, retry the complete set
@@ -1105,7 +1115,15 @@ class EventExtractionEngine(
         }
         val merged = merge(parses)
         val modelsUsed = results.filterIsInstance<CloudResult.Success>().mapNotNull(CloudResult.Success::model).toSet()
-        return if (merged.drafts.isEmpty() && !merged.syllabus.canExpandClasses) ExtractionOutcome.Manual("Respuesta estructurada inválida") else outcome(merged, existing, assumedInstitution, modelsUsed)
+        // A valid but empty response means the document simply has no events — keep it as a source.
+        // (Malformed cloud output is caught above at the parseSyllabus null-check and stays Manual.)
+        return if (merged.drafts.isEmpty() && !merged.syllabus.canExpandClasses) {
+            diagnostics.record(
+                diagnosticTraceId,
+                ImportDiagnosticEvent(phase = "routing_decision", backend = "cloud", outcome = "no_events"),
+            )
+            ExtractionOutcome.NoEvents(modelsUsed)
+        } else outcome(merged, existing, assumedInstitution, modelsUsed)
     }
 
     private fun localFallback(importId: String, failure: NanoFailureKind, retryable: Boolean): ExtractionOutcome? {

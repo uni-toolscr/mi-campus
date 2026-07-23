@@ -19,6 +19,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
@@ -27,6 +28,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -42,11 +44,13 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
@@ -61,19 +65,45 @@ import cr.micampus.app.core.model.CampusEvent
 import cr.micampus.app.core.model.EventKind
 import cr.micampus.app.core.model.Institution
 import cr.micampus.app.feature.calendar.EventEditorDialog
+import android.content.ActivityNotFoundException
+import android.content.Intent
+import kotlinx.coroutines.launch
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ChatScreen(state: ChatUiState, viewModel: ChatViewModel, onBack: () -> Unit) {
+fun ChatScreen(state: ChatUiState, viewModel: ChatViewModel, onBack: () -> Unit, onOpenFiles: () -> Unit) {
     var question by rememberSaveable { mutableStateOf("") }
     var editingEvent by remember { mutableStateOf<CampusEvent?>(null) }
     val listState = rememberLazyListState()
+    val context = LocalContext.current
+    val uriHandler = LocalUriHandler.current
+    val scope = rememberCoroutineScope()
     val send = {
         if (question.isNotBlank() && state.status == ChatEngineStatus.IDLE) {
             viewModel.send(question)
             question = ""
+        }
+    }
+    // Opens a citation: uploaded files open in a viewer; web citations (unused today) open the browser.
+    val openSource: (ChatCitation) -> Unit = { citation ->
+        val documentId = citation.documentId
+        when {
+            documentId != null -> scope.launch {
+                val uri = viewModel.sourceContentUri(documentId) ?: return@launch
+                try {
+                    val mime = context.contentResolver.getType(uri) ?: "*/*"
+                    context.startActivity(
+                        Intent(Intent.ACTION_VIEW)
+                            .setDataAndType(uri, mime)
+                            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION),
+                    )
+                } catch (_: ActivityNotFoundException) {
+                    // No installed app can open this file type; nothing else to do.
+                }
+            }
+            citation.url != null -> uriHandler.openUri(citation.url)
         }
     }
 
@@ -96,6 +126,11 @@ fun ChatScreen(state: ChatUiState, viewModel: ChatViewModel, onBack: () -> Unit)
                         Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = null)
                         Spacer(Modifier.width(4.dp))
                         Text("Atrás")
+                    }
+                },
+                actions = {
+                    IconButton(onClick = onOpenFiles) {
+                        Icon(Icons.Outlined.Add, contentDescription = "Fuentes y archivos")
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
@@ -174,7 +209,7 @@ fun ChatScreen(state: ChatUiState, viewModel: ChatViewModel, onBack: () -> Unit)
                     }
                 }
                 itemsIndexed(state.messages, key = { index, _ -> index }) { _, message ->
-                    MessageBubble(message, Modifier.animateItem())
+                    MessageBubble(message, onOpenSource = openSource, modifier = Modifier.animateItem())
                 }
                 state.pendingEvent?.let { proposal ->
                     item("event-${proposal.id}") {
@@ -235,7 +270,7 @@ private fun KnowledgeScopeNotice(state: ChatUiState) {
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
-            if (state.hasDocuments) Text("Tus PDF importados también pueden usarse como fuente local.", style = MaterialTheme.typography.bodySmall)
+            if (state.hasDocuments) Text("Tus archivos importados también pueden usarse como fuente local.", style = MaterialTheme.typography.bodySmall)
         }
     }
 }
@@ -244,9 +279,12 @@ private val userBubbleShape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.d
 private val assistantBubbleShape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp, bottomEnd = 24.dp, bottomStart = 8.dp)
 
 @Composable
-private fun MessageBubble(message: ChatMessage, modifier: Modifier = Modifier) {
+private fun MessageBubble(
+    message: ChatMessage,
+    onOpenSource: (ChatCitation) -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val user = message.role == ChatMessageRole.USER
-    val uriHandler = LocalUriHandler.current
     Row(
         modifier.fillMaxWidth().padding(horizontal = 16.dp),
         horizontalArrangement = if (user) Arrangement.End else Arrangement.Start,
@@ -260,15 +298,24 @@ private fun MessageBubble(message: ChatMessage, modifier: Modifier = Modifier) {
             },
         ) {
             Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(message.text, color = if (user) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface)
+                if (user) {
+                    Text(message.text, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                } else {
+                    // Render Markdown/bare-URL link embeds as clickable blue links.
+                    Text(
+                        buildAssistantText(message.text, MaterialTheme.colorScheme.primary),
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                }
                 if (message.generatedInCloud) {
                     Text("Respuesta generada en la nube", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
+                // Only user-uploaded files are listed as sources; base knowledge is never cited here.
                 message.citations.take(3).forEach { citation ->
                     AssistChip(
-                        onClick = { uriHandler.openUri(citation.url) },
-                        label = { Text("${citation.institution.llmShortName}: ${citation.label}") },
-                        modifier = Modifier.semantics { contentDescription = "Abrir fuente oficial ${citation.label}" },
+                        onClick = { onOpenSource(citation) },
+                        label = { Text("${citation.institution.llmShortName} · ${citation.label}") },
+                        modifier = Modifier.semantics { contentDescription = "Abrir archivo fuente ${citation.label}" },
                     )
                 }
             }

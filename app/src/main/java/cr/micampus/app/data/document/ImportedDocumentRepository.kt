@@ -184,7 +184,7 @@ class ImportedDocumentRepository(
             if (count == 0L) throw DocumentStoreException("El archivo está vacío.")
             val sha256 = digest.digest().joinToString("") { "%02x".format(it) }
             val existing = documentsDao.documentByHash(sha256)
-            val destination = File(directory, "$sha256.pdf")
+            val destination = File(directory, "$sha256.${extensionFor(uri, displayName)}")
             if (!destination.isFile) {
                 if (!temporary.renameTo(destination)) {
                     temporary.copyTo(destination, overwrite = true)
@@ -209,6 +209,15 @@ class ImportedDocumentRepository(
         } finally {
             temporary.delete()
         }
+    }
+
+    /** Preserves the original file extension so the stored copy opens with the right viewer. */
+    private fun extensionFor(uri: Uri, displayName: String): String {
+        val fromName = displayName.substringAfterLast('.', "").lowercase()
+            .takeIf { it.isNotBlank() && it.length in 1..5 && it.all(Char::isLetterOrDigit) }
+        val fromMime = context.contentResolver.getType(uri)
+            ?.let { android.webkit.MimeTypeMap.getSingleton().getExtensionFromMimeType(it) }
+        return fromName ?: fromMime ?: "pdf"
     }
 
     private fun metadata(uri: Uri): Pair<String, Long?> {

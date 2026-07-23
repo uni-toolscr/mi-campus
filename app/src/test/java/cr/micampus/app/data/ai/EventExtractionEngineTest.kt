@@ -67,6 +67,36 @@ class EventExtractionEngineTest {
         assertEquals(0, cloud.calls)
     }
 
+    @Test fun localValidEmptyResultIsSavedAsSourceWithoutCloudEscalation() = runBlocking {
+        val local = Local(NanoCapability.AVAILABLE) { LocalGenerationResult.Success(EMPTY_CONTRACT) }
+        val cloud = Cloud("{\"events\":[{\"title\":\"Nube\"}]}")
+        val result = EventExtractionEngine(local = local, cloud = cloud, consent = Consent(ConsentDecision.PENDING))
+            .extract("batch", listOf("a"))
+
+        assertTrue(result is ExtractionOutcome.NoEvents)
+        assertEquals(0, cloud.calls) // no escalation and no consent prompt for a valid empty document
+    }
+
+    @Test fun cloudValidEmptyResultIsSavedAsSource() = runBlocking {
+        val cloud = Cloud(EMPTY_CONTRACT)
+        val result = EventExtractionEngine(local = Local(NanoCapability.UNAVAILABLE), cloud = cloud, consent = Consent(ConsentDecision.GRANTED))
+            .extract("batch", listOf("a"))
+
+        assertTrue(result is ExtractionOutcome.NoEvents)
+    }
+
+    @Test fun malformedLocalOutputStillFails() = runBlocking {
+        val local = Local(NanoCapability.AVAILABLE) { LocalGenerationResult.Success("esto no es json") }
+        assertTrue(EventExtractionEngine(local = local).extract("x", listOf("a")) is ExtractionOutcome.LocalFailed)
+    }
+
+    @Test fun malformedCloudOutputStillReturnsManual() = runBlocking {
+        val cloud = Cloud("esto no es json")
+        val result = EventExtractionEngine(local = Local(NanoCapability.UNAVAILABLE), cloud = cloud, consent = Consent(ConsentDecision.GRANTED))
+            .extract("x", listOf("a"))
+        assertTrue(result is ExtractionOutcome.Manual)
+    }
+
     @Test fun oversizedLocalPromptIsSplitAndProcessed() = runBlocking {
         val local = Local(NanoCapability.AVAILABLE) { prompt ->
             if (wordCount(prompt) > 800) LocalGenerationResult.TooLarge
@@ -254,4 +284,8 @@ class EventExtractionEngineTest {
     }
 
     private fun wordCount(value: String) = value.split(Regex("\\s+")).count(String::isNotBlank)
+
+    private companion object {
+        const val EMPTY_CONTRACT = "{\"course\":null,\"groups\":[],\"weeks\":[],\"holidays\":[],\"events\":[]}"
+    }
 }

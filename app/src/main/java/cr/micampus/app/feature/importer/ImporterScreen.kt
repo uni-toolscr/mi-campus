@@ -83,9 +83,10 @@ fun ImporterScreen(state: ImporterUiState, viewModel: ImporterViewModel, onClose
     LaunchedEffect(state.openUri) {
         val uri = state.openUri ?: return@LaunchedEffect
         try {
-            context.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri, "application/pdf").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
+            val mime = context.contentResolver.getType(uri) ?: "*/*"
+            context.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri, mime).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
         } catch (_: ActivityNotFoundException) {
-            android.widget.Toast.makeText(context, "No hay una aplicación disponible para abrir PDF.", android.widget.Toast.LENGTH_LONG).show()
+            android.widget.Toast.makeText(context, "No hay una aplicación disponible para abrir este archivo.", android.widget.Toast.LENGTH_LONG).show()
         } finally {
             viewModel.consumeOpenUri()
         }
@@ -130,7 +131,7 @@ fun ImporterScreen(state: ImporterUiState, viewModel: ImporterViewModel, onClose
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(if (selectedDraftIds.isEmpty()) "Importar PDF" else "${selectedDraftIds.size} seleccionados") },
+                title = { Text(if (selectedDraftIds.isEmpty()) "Documentos y fuentes" else "${selectedDraftIds.size} seleccionados") },
                 navigationIcon = {
                     if (selectedDraftIds.isEmpty()) {
                         IconButton(onClick = { viewModel.cancel(); onClose() }) { Icon(Icons.Outlined.Close, contentDescription = "Cerrar importación") }
@@ -151,7 +152,7 @@ fun ImporterScreen(state: ImporterUiState, viewModel: ImporterViewModel, onClose
         },
     ) { padding ->
         when (state.stage) {
-            ImportStage.IDLE -> ImportStart(state, Modifier.padding(padding), onPick = { picker.launch(arrayOf("application/pdf")) }, onManual = { viewModel.addManualDraft() }, onRetry = viewModel::retryDocument, onOpen = viewModel::requestOpenDocument, onDelete = viewModel::deleteDocument)
+            ImportStage.IDLE -> ImportStart(state, Modifier.padding(padding), onPick = { picker.launch(arrayOf("application/pdf", "text/*", "image/*")) }, onManual = { viewModel.addManualDraft() }, onRetry = viewModel::retryDocument, onOpen = viewModel::requestOpenDocument, onDelete = viewModel::deleteDocument)
             ImportStage.EXTRACTING -> BatchProgress(state, Modifier.padding(padding))
             ImportStage.NEEDS_NANO -> Column(Modifier.padding(padding).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text("Gemini Nano está disponible para descargar", style = MaterialTheme.typography.headlineSmall)
@@ -211,18 +212,18 @@ private fun ImportStart(state: ImporterUiState, modifier: Modifier, onPick: () -
     LazyColumn(modifier.fillMaxSize().padding(horizontal = 20.dp), contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
             Icon(Icons.Outlined.UploadFile, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-            Text("Importa tus cartas al estudiante", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+            Text("Archivos y fuentes para la IA", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
             Text(
-                "Selecciona hasta 10 PDF. Se guardan de forma privada en este dispositivo y se procesan uno por uno para crear borradores.",
+                "Agrega hasta 10 archivos (PDF, texto o imagen). Se guardan de forma privada en este dispositivo y el asistente puede usarlos como fuente.",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(vertical = 12.dp),
             )
             Text("Primero se intenta texto local y OCR. Nada se confirma automáticamente.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 12.dp))
-            Button(onClick = onPick, modifier = Modifier.fillMaxWidth().height(56.dp), shape = androidx.compose.foundation.shape.RoundedCornerShape(28.dp)) { Text("Seleccionar varios PDF", style = MaterialTheme.typography.titleMedium) }
+            Button(onClick = onPick, modifier = Modifier.fillMaxWidth().height(56.dp), shape = androidx.compose.foundation.shape.RoundedCornerShape(28.dp)) { Text("Agregar archivos", style = MaterialTheme.typography.titleMedium) }
             OutlinedButton(onClick = onManual, modifier = Modifier.fillMaxWidth().padding(top = 8.dp).height(52.dp), shape = androidx.compose.foundation.shape.RoundedCornerShape(26.dp)) { Text("Ingresar evento manualmente") }
         }
         state.message?.let { message -> item { Text(message, color = MaterialTheme.colorScheme.primary) } }
-        if (state.documents.isNotEmpty()) item { Text("PDF guardados", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(top = 8.dp)) }
+        if (state.documents.isNotEmpty()) item { Text("Archivos guardados", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(top = 8.dp)) }
         items(state.documents, key = ImportedDocument::id) { document ->
             DocumentLibraryCard(document, onRetry, onOpen, onDelete)
         }
@@ -265,7 +266,7 @@ private fun BatchProgress(state: ImporterUiState, modifier: Modifier) {
 
 @Composable
 private fun DocumentLibraryCard(document: ImportedDocument, onRetry: (String) -> Unit, onOpen: (String) -> Unit, onDelete: (String) -> Unit) {
-    ElevatedCard(Modifier.fillMaxWidth().semantics { contentDescription = "PDF guardado ${document.displayName}" }) {
+    ElevatedCard(Modifier.fillMaxWidth().semantics { contentDescription = "Archivo guardado ${document.displayName}" }) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(document.displayName, style = MaterialTheme.typography.titleMedium)
             Text("${formatBytes(document.byteSize)} · ${documentStatusLabel(document)}", style = MaterialTheme.typography.bodySmall, color = if (document.status == DocumentStatus.FAILED) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
@@ -291,7 +292,8 @@ private fun batchStatusLabel(item: BatchImportItem) = listOf(item.status.name.lo
 private fun documentStatusLabel(document: ImportedDocument) = when (document.status) {
     DocumentStatus.STORED -> "Guardado"
     DocumentStatus.PROCESSING -> "Procesando"
-    DocumentStatus.COMPLETED -> "Procesado (${document.draftCount} borradores)"
+    DocumentStatus.COMPLETED ->
+        if (document.draftCount > 0) "Procesado (${document.draftCount} borradores)" else "Disponible como fuente para el asistente"
     DocumentStatus.MANUAL -> "Requiere revisión manual"
     DocumentStatus.FAILED -> "Error: ${document.error.orEmpty()}"
     DocumentStatus.CANCELLED -> "Cancelado"

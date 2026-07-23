@@ -81,6 +81,8 @@ import cr.micampus.app.core.model.ResourceKind
 import cr.micampus.app.feature.settings.SettingsScreen
 import cr.micampus.app.feature.settings.SettingsUiState
 import cr.micampus.app.feature.settings.SettingsViewModel
+import cr.micampus.app.feature.update.UpdateViewModel
+import cr.micampus.app.BuildConfig
 import cr.micampus.app.feature.settings.LocalAiAvailability
 import cr.micampus.app.feature.settings.AcademicProgressUiState
 import cr.micampus.app.feature.settings.MoodleSettingsUiState
@@ -108,7 +110,7 @@ class PrimaryScreenScreenshotTest {
     @Test fun homeDarkThemeScreenshotSmoke() {
         compose.setContent {
             MiCampusTheme(ThemeMode.DARK, dynamicColor = false) {
-                AppBackgroundSurface { HomeScreen(HomeUiState(loading = false), {}, {}) }
+                AppBackgroundSurface { HomeScreen(HomeUiState(loading = false), {}) }
             }
         }
         assertNonEmpty(compose.onRoot().captureToImage())
@@ -119,7 +121,7 @@ class PrimaryScreenScreenshotTest {
             val density = LocalDensity.current
             CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale = 2f)) {
                 MiCampusTheme(dynamicColor = false) {
-                    AppBackgroundSurface { HomeScreen(HomeUiState(loading = false), {}, {}) }
+                    AppBackgroundSurface { HomeScreen(HomeUiState(loading = false), {}) }
                 }
             }
         }
@@ -322,6 +324,8 @@ class PrimaryScreenScreenshotTest {
                         localAiAvailability = LocalAiAvailability.Available("modelo-runtime-prueba"),
                     ),
                     viewModel,
+                    updateVm(),
+                    onInstallUpdate = {},
                 )
             }
         }
@@ -376,6 +380,8 @@ class PrimaryScreenScreenshotTest {
                         ),
                     ),
                     viewModel,
+                    updateVm(),
+                    onInstallUpdate = {},
                 )
             }
         }
@@ -398,14 +404,22 @@ class PrimaryScreenScreenshotTest {
                 ChatMessage(ChatMessageRole.USER, "¿Cómo solicito una beca?"),
                 ChatMessage(
                     role = ChatMessageRole.ASSISTANT,
-                    text = "Consulta la convocatoria vigente y confirma las fechas en la fuente oficial.",
-                    citations = listOf(ChatCitation("becas", "Becas estudiantiles", "https://www.una.ac.cr/", Institution.UNA, volatile = true)),
+                    text = "Consulta la convocatoria vigente; más detalles en [este enlace](https://www.una.ac.cr/becas).",
+                    citations = listOf(
+                        ChatCitation(
+                            id = "doc-becas-3",
+                            label = "Becas.pdf, pág. 3",
+                            institution = Institution.UNA,
+                            documentId = "becas",
+                            page = 3,
+                        ),
+                    ),
                 ),
             ),
         )
         compose.setContent {
             MiCampusTheme(ThemeMode.DARK, dynamicColor = false) {
-                ChatScreen(state, chatViewModel(), onBack = {})
+                ChatScreen(state, chatViewModel(), onBack = {}, onOpenFiles = {})
             }
         }
 
@@ -428,7 +442,7 @@ class PrimaryScreenScreenshotTest {
             val density = LocalDensity.current
             CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale = 2f)) {
                 // Keep the app dark even if the test device itself is using a light theme.
-                MiCampusTheme(ThemeMode.DARK, dynamicColor = false) { ChatScreen(state, chatViewModel(), onBack = {}) }
+                MiCampusTheme(ThemeMode.DARK, dynamicColor = false) { ChatScreen(state, chatViewModel(), onBack = {}, onOpenFiles = {}) }
             }
         }
 
@@ -444,7 +458,7 @@ class PrimaryScreenScreenshotTest {
             val currentImeBottom = WindowInsets.ime.getBottom(density)
             SideEffect { imeBottom = currentImeBottom }
             MiCampusTheme(ThemeMode.DARK, dynamicColor = false) {
-                ChatScreen(state, chatViewModel(), onBack = {})
+                ChatScreen(state, chatViewModel(), onBack = {}, onOpenFiles = {})
             }
         }
 
@@ -517,7 +531,7 @@ class PrimaryScreenScreenshotTest {
         compose.setContent {
             val density = LocalDensity.current
             CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale)) {
-                MiCampusTheme(theme, dynamicColor = false) { SettingsScreen(state, viewModel) }
+                MiCampusTheme(theme, dynamicColor = false) { SettingsScreen(state, viewModel, updateVm(), onInstallUpdate = {}) }
             }
         }
         compose.onNodeWithText("IA y privacidad").performScrollTo()
@@ -569,6 +583,11 @@ class PrimaryScreenScreenshotTest {
     private fun assertNonEmpty(image: ImageBitmap) {
         assertTrue(image.width > 0)
         assertTrue(image.height > 0)
+    }
+
+    private fun updateVm(): UpdateViewModel {
+        val container = app().container
+        return UpdateViewModel(container.updateChecker, container.updateDownloader, container.settings, BuildConfig.VERSION_NAME)
     }
 
     private fun app(): MiCampusApplication =

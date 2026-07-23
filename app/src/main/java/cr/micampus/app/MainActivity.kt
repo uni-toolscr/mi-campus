@@ -235,7 +235,7 @@ private fun MainDestinations(container: AppContainer, launchDestination: Mutable
     BackHandler(enabled = overlay != null) { overlay = null }
     AppBackgroundSurface(Modifier.fillMaxSize()) {
         when (tab) {
-            ShellTab.HOME -> HomeScreen(homeState, onImport = { importing = true }, onOpenSettings = { overlay = Overlay.SETTINGS })
+            ShellTab.HOME -> HomeScreen(homeState, onOpenSettings = { overlay = Overlay.SETTINGS })
             ShellTab.CALENDAR -> CalendarScreen(calendarState, calendar, expanded, onOpenSettings = { overlay = Overlay.SETTINGS })
             ShellTab.CONTENTS -> ContentsScreen(
                 state = contentsState,
@@ -272,7 +272,7 @@ private fun MainDestinations(container: AppContainer, launchDestination: Mutable
                 SettingsScreen(settingsState, settings, update, onInstallUpdate = attemptInstallUpdate, onBack = { overlay = null })
             }
             Overlay.CHAT -> Surface(Modifier.fillMaxSize()) {
-                ChatScreen(chatState, chat, onBack = { overlay = null })
+                ChatScreen(chatState, chat, onBack = { overlay = null }, onOpenFiles = { importing = true })
             }
             null -> Unit
         }

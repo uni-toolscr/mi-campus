@@ -70,6 +70,8 @@ import cr.micampus.app.feature.settings.MoodleSettingsUiState
 import cr.micampus.app.feature.settings.SettingsScreen
 import cr.micampus.app.feature.settings.SettingsUiState
 import cr.micampus.app.feature.settings.SettingsViewModel
+import cr.micampus.app.feature.update.UpdateViewModel
+import cr.micampus.app.BuildConfig
 import org.junit.Rule
 import org.junit.Test
 import org.junit.Assert.assertTrue
@@ -162,6 +164,7 @@ class ScreenBehaviorTest {
                     state = ChatUiState(hasDocuments = false, selectedInstitutions = listOf(Institution.UNA)),
                     viewModel = chatViewModel(),
                     onBack = {},
+                    onOpenFiles = {},
                 )
             }
         }
@@ -310,6 +313,8 @@ class ScreenBehaviorTest {
                         localAiAvailability = LocalAiAvailability.Unavailable,
                     ),
                     viewModel,
+                    updateVm(),
+                    onInstallUpdate = {},
                 )
             }
         }
@@ -344,6 +349,8 @@ class ScreenBehaviorTest {
                         ),
                     ),
                     viewModel,
+                    updateVm(),
+                    onInstallUpdate = {},
                 )
             }
         }
@@ -376,6 +383,8 @@ class ScreenBehaviorTest {
                         ),
                     ),
                     viewModel,
+                    updateVm(),
+                    onInstallUpdate = {},
                 )
             }
         }
@@ -395,6 +404,8 @@ class ScreenBehaviorTest {
                         progress = AcademicProgressUiState.Unavailable("Progreso no disponible"),
                     ),
                     viewModel,
+                    updateVm(),
+                    onInstallUpdate = {},
                 )
             }
         }
@@ -411,6 +422,8 @@ class ScreenBehaviorTest {
                 SettingsScreen(
                     SettingsUiState(localAiAvailability = LocalAiAvailability.Downloadable),
                     viewModel,
+                    updateVm(),
+                    onInstallUpdate = {},
                 )
             }
         }
@@ -440,6 +453,7 @@ class ScreenBehaviorTest {
     @Test fun debugDiagnosticsControlsAreVisibleOnlyWhenRecorderIsAvailable() {
         val container = app().container
         val viewModel = SettingsViewModel(container.settings, container.keyStore, container.events, container.reminders, container.moodle)
+        val update = UpdateViewModel(container.updateChecker, container.updateDownloader, container.settings, BuildConfig.VERSION_NAME)
         compose.setContent {
             MiCampusTheme(dynamicColor = false) {
                 SettingsScreen(
@@ -448,6 +462,8 @@ class ScreenBehaviorTest {
                         diagnosticsAvailable = true,
                     ),
                     viewModel,
+                    update,
+                    onInstallUpdate = {},
                 )
             }
         }
@@ -462,9 +478,10 @@ class ScreenBehaviorTest {
     @Test fun debugDiagnosticsControlsAreAbsentWhenRecorderIsUnavailable() {
         val container = app().container
         val viewModel = SettingsViewModel(container.settings, container.keyStore, container.events, container.reminders, container.moodle)
+        val update = UpdateViewModel(container.updateChecker, container.updateDownloader, container.settings, BuildConfig.VERSION_NAME)
         compose.setContent {
             MiCampusTheme(dynamicColor = false) {
-                SettingsScreen(SettingsUiState(diagnosticsAvailable = false), viewModel)
+                SettingsScreen(SettingsUiState(diagnosticsAvailable = false), viewModel, update, onInstallUpdate = {})
             }
         }
 
@@ -488,6 +505,11 @@ class ScreenBehaviorTest {
                 onDataChanged = container.widgets::refreshAll,
             ),
         )
+    }
+
+    private fun updateVm(): UpdateViewModel {
+        val container = app().container
+        return UpdateViewModel(container.updateChecker, container.updateDownloader, container.settings, BuildConfig.VERSION_NAME)
     }
 
     private fun app(): MiCampusApplication =

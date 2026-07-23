@@ -2,6 +2,7 @@ package cr.micampus.app.data.document
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.pdf.PdfRenderer
 import android.net.Uri
 import android.os.Build
@@ -57,29 +58,122 @@ class PdfExtractionCoordinator(private val ocr: OcrPageRecognizer) {
     fun close() { (ocr as? java.io.Closeable)?.close() }
     private fun String.normalize() = replace("\u0000", "").replace(Regex("\\s+"), " ").trim()
 }
+/** Detected file family used to route extraction. Every family yields the same [ExtractedDocument]. */
+internal enum class DocumentKind { PDF, IMAGE, TEXT }
+
+private const val HEADER_BYTES = 16
+
+/** Reads up to [HEADER_BYTES] leading bytes for magic-number sniffing without consuming the whole file. */
+internal fun readHeader(input: java.io.InputStream): ByteArray {
+    val buffer = ByteArray(HEADER_BYTES)
+    var read = 0
+    while (read < HEADER_BYTES) {
+        val n = input.read(buffer, read, HEADER_BYTES - read)
+        if (n < 0) break
+        read += n
+    }
+    return if (read == HEADER_BYTES) buffer else buffer.copyOf(read)
+}
+
+/**
+ * Routes by content signature first (works for the stored-file path where MIME is unknown), then
+ * falls back to the [mimeHint] when present, and finally treats the file as UTF-8 text.
+ */
+internal fun classify(header: ByteArray, mimeHint: String?): DocumentKind {
+    fun startsWith(vararg bytes: Int): Boolean =
+        header.size >= bytes.size && bytes.withIndex().all { (i, b) -> header[i] == b.toByte() }
+    return when {
+        startsWith(0x25, 0x50, 0x44, 0x46) -> DocumentKind.PDF // "%PDF"
+        startsWith(0x89, 0x50, 0x4E, 0x47) -> DocumentKind.IMAGE // PNG
+        startsWith(0xFF, 0xD8, 0xFF) -> DocumentKind.IMAGE // JPEG
+        startsWith(0x47, 0x49, 0x46, 0x38) -> DocumentKind.IMAGE // GIF
+        header.size >= 12 && startsWith(0x52, 0x49, 0x46, 0x46) &&
+            header[8] == 0x57.toByte() && header[9] == 0x45.toByte() -> DocumentKind.IMAGE // WEBP (RIFF….WEBP)
+        mimeHint == "application/pdf" -> DocumentKind.PDF
+        mimeHint?.startsWith("image/") == true -> DocumentKind.IMAGE
+        else -> DocumentKind.TEXT
+    }
+}
+
 class PdfDocumentExtractor(private val context: Context) {
     suspend fun extract(uri: Uri): Result<ExtractedDocument> {
         val resolver = context.contentResolver
-        val type = resolver.getType(uri)
-        if (type != null && type != "application/pdf") return Result.failure(PdfExtractionException(ImportError.UNSUPPORTED))
-        val descriptor = try {
-            resolver.openFileDescriptor(uri, "r") ?: return Result.failure(PdfExtractionException(ImportError.MALFORMED))
+        val header = try {
+            resolver.openInputStream(uri)?.use(::readHeader)
+                ?: return Result.failure(PdfExtractionException(ImportError.MALFORMED))
         } catch (error: SecurityException) {
             return Result.failure(PdfExtractionException(ImportError.PERMISSION_DENIED, error))
         } catch (error: java.io.IOException) {
             return Result.failure(PdfExtractionException(ImportError.MALFORMED, error))
         }
-        return extractDescriptor(descriptor)
+        return when (classify(header, resolver.getType(uri))) {
+            DocumentKind.PDF -> {
+                val descriptor = try {
+                    resolver.openFileDescriptor(uri, "r")
+                        ?: return Result.failure(PdfExtractionException(ImportError.MALFORMED))
+                } catch (error: SecurityException) {
+                    return Result.failure(PdfExtractionException(ImportError.PERMISSION_DENIED, error))
+                } catch (error: java.io.IOException) {
+                    return Result.failure(PdfExtractionException(ImportError.MALFORMED, error))
+                }
+                extractDescriptor(descriptor)
+            }
+            DocumentKind.IMAGE -> extractImage { resolver.openInputStream(uri) }
+            DocumentKind.TEXT -> extractText { resolver.openInputStream(uri) }
+        }
     }
 
     suspend fun extract(file: File): Result<ExtractedDocument> {
-        val descriptor = try {
-            ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
+        val header = try {
+            file.inputStream().use(::readHeader)
         } catch (error: java.io.IOException) {
             return Result.failure(PdfExtractionException(ImportError.MALFORMED, error))
         }
-        return extractDescriptor(descriptor)
+        return when (classify(header, null)) {
+            DocumentKind.PDF -> {
+                val descriptor = try {
+                    ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
+                } catch (error: java.io.IOException) {
+                    return Result.failure(PdfExtractionException(ImportError.MALFORMED, error))
+                }
+                extractDescriptor(descriptor)
+            }
+            DocumentKind.IMAGE -> extractImage { file.inputStream() }
+            DocumentKind.TEXT -> extractText { file.inputStream() }
+        }
     }
+
+    private suspend fun extractImage(open: () -> java.io.InputStream?): Result<ExtractedDocument> {
+        val bitmap = try {
+            open()?.use { BitmapFactory.decodeStream(it) }
+        } catch (error: java.io.IOException) {
+            return Result.failure(PdfExtractionException(ImportError.MALFORMED, error))
+        } ?: return Result.failure(PdfExtractionException(ImportError.MALFORMED))
+        val recognizer = MlKitLatinRecognizer()
+        return try {
+            val text = runCatching { recognizer.recognize(bitmap) }
+                .getOrElse { return Result.failure(PdfExtractionException(ImportError.OCR_FAILED, it)) }
+                .let(::normalizeText)
+            if (text.isBlank()) Result.failure(PdfExtractionException(ImportError.EMPTY))
+            else Result.success(ExtractedDocument(listOf(PageText(1, text))))
+        } finally {
+            recognizer.close()
+            bitmap.recycle()
+        }
+    }
+
+    private fun extractText(open: () -> java.io.InputStream?): Result<ExtractedDocument> {
+        val raw = try {
+            open()?.use { it.readBytes().toString(Charsets.UTF_8) }
+        } catch (error: java.io.IOException) {
+            return Result.failure(PdfExtractionException(ImportError.MALFORMED, error))
+        } ?: return Result.failure(PdfExtractionException(ImportError.MALFORMED))
+        val text = normalizeText(raw)
+        return if (text.isBlank()) Result.failure(PdfExtractionException(ImportError.EMPTY))
+        else Result.success(ExtractedDocument(listOf(PageText(1, text))))
+    }
+
+    private fun normalizeText(value: String) = value.replace(" ", "").replace(Regex("\\s+"), " ").trim()
 
     private suspend fun extractDescriptor(descriptor: ParcelFileDescriptor): Result<ExtractedDocument> {
         val recognizer = MlKitLatinRecognizer()

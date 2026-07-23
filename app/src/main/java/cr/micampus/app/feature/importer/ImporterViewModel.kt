@@ -288,7 +288,9 @@ class ImporterViewModel(
                 continue
             }
             if (!aiSettings.localAiEnabled && !aiSettings.cloudAiEnabled) {
-                finishCurrent(DocumentStatus.MANUAL, BatchItemStatus.MANUAL, "Los procesadores de IA están desactivados.")
+                // The text is already transcribed for chat grounding, so the file is a valid source
+                // even without event extraction — finish as a source rather than "requires manual".
+                finishCurrent(DocumentStatus.COMPLETED, BatchItemStatus.COMPLETED, "Guardado como fuente; IA desactivada", 0)
                 continue
             }
             if (processCurrent()) return
@@ -419,6 +421,11 @@ class ImporterViewModel(
                 diagnostics.record(work.diagnosticTraceId, ImportDiagnosticEvent(phase = "routing_decision", backend = "cloud", outcome = "failure", failure = outcome.failure.name.lowercase()))
                 val message = cloudMessage(outcome.failure)
                 finishCurrent(DocumentStatus.FAILED, BatchItemStatus.FAILED, message)
+                false
+            }
+            is ExtractionOutcome.NoEvents -> {
+                work.modelsUsed = outcome.modelsUsed
+                finishCurrent(DocumentStatus.COMPLETED, BatchItemStatus.COMPLETED, "Guardado como fuente para el asistente", 0, outcome.modelsUsed)
                 false
             }
             is ExtractionOutcome.Manual -> {
