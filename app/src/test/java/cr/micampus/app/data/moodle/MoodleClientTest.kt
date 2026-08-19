@@ -5,6 +5,7 @@ import cr.micampus.app.core.model.ResourceKind
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.IOException
@@ -133,6 +134,94 @@ class MoodleClientTest {
         assertEquals("https://moodle.test/pluginfile.php/7/mod_resource/content/1/guia%20uno.pdf?forcedownload=1", file.url)
         assertFalse(file.url.contains("secret-token"))
         assertTrue(transport.requests.any { it.form["wsfunction"] == MoodleClient.CONTENTS && it.form["courseid"] == "7" })
+    }
+
+    @Test
+    fun contentCatalogMapsSingleHtmlResourceToNavigablePage() = runBlocking {
+        val catalog = fetchCatalogForContents("""
+            [
+              {"id":70,"name":"Semana 1","section":1,"modules":[
+                {"id":101,"name":"Sílabo","modname":"resource","url":"https://moodle.test/mod/resource/view.php?id=101&token=module-secret","contents":[
+                  {"filename":"index.html","fileurl":"https://moodle.test/pluginfile.php/7/mod_resource/content/1/index.html","mimetype":"text/html"}
+                ]}
+              ]}
+            ]
+        """.trimIndent())
+
+        val resource = catalog.courses.single().sections.single().resources.single()
+
+        assertEquals(ResourceKind.PAGE, resource.kind)
+        assertEquals("https://moodle.test/mod/resource/view.php?id=101", resource.url)
+        assertTrue(resource.files.isEmpty())
+    }
+
+    @Test
+    fun contentCatalogMapsHtmlMimeAndExtensionsOnlyWhenModuleHasSafeUrl() = runBlocking {
+        val htmlMime = fetchCatalogForContents(singleModuleContentsJson("resource", """
+            {"filename":"syllabus.bin","fileurl":"https://moodle.test/pluginfile.php/syllabus","mimetype":"TEXT/HTML; charset=utf-8"}
+        """, moduleUrl = "https://moodle.test/mod/resource/view.php?id=101")).courses.single().sections.single().resources.single()
+        val htmlExtension = fetchCatalogForContents(singleModuleContentsJson("resource", """
+            {"filename":"syllabus.HTM","fileurl":"https://moodle.test/pluginfile.php/syllabus"}
+        """, moduleUrl = "https://moodle.test/mod/resource/view.php?id=102")).courses.single().sections.single().resources.single()
+
+        assertEquals(ResourceKind.PAGE, htmlMime.kind)
+        assertEquals(ResourceKind.PAGE, htmlExtension.kind)
+        assertTrue(htmlMime.files.isEmpty())
+        assertTrue(htmlExtension.files.isEmpty())
+    }
+
+    @Test
+    fun contentCatalogPromotesHtmlAfterFilteringDecorativeImages() = runBlocking {
+        val htmlWithPreview = fetchCatalogForContents(singleModuleContentsJson("resource", """
+            {"filename":"index.html","fileurl":"https://moodle.test/pluginfile.php/index","mimetype":"text/html"},
+            {"filename":"preview.png","fileurl":"https://moodle.test/pluginfile.php/preview","mimetype":"image/png"}
+        """, moduleUrl = "https://moodle.test/mod/resource/view.php?id=101")).courses.single().sections.single().resources.single()
+        val htmlWithImageMime = fetchCatalogForContents(singleModuleContentsJson("resource", """
+            {"filename":"index.html","fileurl":"https://moodle.test/pluginfile.php/index","mimetype":"image/png"}
+        """, moduleUrl = "https://moodle.test/mod/resource/view.php?id=102")).courses.single().sections.single().resources.single()
+
+        assertEquals(ResourceKind.PAGE, htmlWithPreview.kind)
+        assertEquals(ResourceKind.PAGE, htmlWithImageMime.kind)
+        assertTrue(htmlWithPreview.files.isEmpty())
+        assertTrue(htmlWithImageMime.files.isEmpty())
+    }
+
+    @Test
+    fun contentCatalogKeepsDocumentsAndUnsafeHtmlResourcesAsDownloads() = runBlocking {
+        val pdf = fetchCatalogForContents(singleModuleContentsJson("resource", """
+            {"filename":"syllabus.pdf","fileurl":"https://moodle.test/pluginfile.php/syllabus","mimetype":"application/pdf"}
+        """, moduleUrl = "https://moodle.test/mod/resource/view.php?id=101")).courses.single().sections.single().resources.single()
+        val missingUrl = fetchCatalogForContents(singleModuleContentsJson("resource", """
+            {"filename":"syllabus.html","fileurl":"https://moodle.test/pluginfile.php/syllabus","mimetype":"text/html"}
+        """)).courses.single().sections.single().resources.single()
+        val insecureUrl = fetchCatalogForContents(singleModuleContentsJson("resource", """
+            {"filename":"syllabus.html","fileurl":"https://moodle.test/pluginfile.php/syllabus","mimetype":"text/html"}
+        """, moduleUrl = "http://moodle.test/mod/resource/view.php?id=103")).courses.single().sections.single().resources.single()
+
+        assertEquals(ResourceKind.FILE, pdf.kind)
+        assertEquals(listOf("syllabus.pdf"), pdf.files.map { it.name })
+        assertEquals(ResourceKind.FILE, missingUrl.kind)
+        assertEquals(ResourceKind.FILE, insecureUrl.kind)
+        assertNull(missingUrl.url)
+        assertNull(insecureUrl.url)
+        assertEquals(listOf("syllabus.html"), missingUrl.files.map { it.name })
+        assertEquals(listOf("syllabus.html"), insecureUrl.files.map { it.name })
+    }
+
+    @Test
+    fun contentCatalogDoesNotPromoteMixedOrFolderHtmlContents() = runBlocking {
+        val mixed = fetchCatalogForContents(singleModuleContentsJson("resource", """
+            {"filename":"syllabus.html","fileurl":"https://moodle.test/pluginfile.php/syllabus","mimetype":"text/html"},
+            {"filename":"notes.pdf","fileurl":"https://moodle.test/pluginfile.php/notes","mimetype":"application/pdf"}
+        """, moduleUrl = "https://moodle.test/mod/resource/view.php?id=101")).courses.single().sections.single().resources.single()
+        val folder = fetchCatalogForContents(singleModuleContentsJson("folder", """
+            {"filename":"syllabus.html","fileurl":"https://moodle.test/pluginfile.php/syllabus","mimetype":"text/html"}
+        """, moduleUrl = "https://moodle.test/mod/folder/view.php?id=102")).courses.single().sections.single().resources.single()
+
+        assertEquals(ResourceKind.FILE, mixed.kind)
+        assertEquals(listOf("syllabus.html", "notes.pdf"), mixed.files.map { it.name })
+        assertEquals(ResourceKind.FOLDER, folder.kind)
+        assertEquals(listOf("syllabus.html"), folder.files.map { it.name })
     }
 
     @Test
@@ -265,10 +354,10 @@ class MoodleClientTest {
 
     private fun client(transport: MoodleTransport) = MoodleClient(transport, baseUrl = "https://moodle.test", zoneId = ZoneOffset.UTC)
 
-    private fun singleModuleContentsJson(modName: String, contents: String) = """
+    private fun singleModuleContentsJson(modName: String, contents: String, moduleUrl: String? = null) = """
         [
           {"id":70,"name":"Semana 1","section":1,"modules":[
-            {"id":101,"name":"Material","modname":"$modName","contents":[$contents]}
+            {"id":101,"name":"Material","modname":"$modName"${moduleUrl?.let { ",\"url\":\"$it\"" }.orEmpty()},"contents":[$contents]}
           ]}
         ]
     """.trimIndent()

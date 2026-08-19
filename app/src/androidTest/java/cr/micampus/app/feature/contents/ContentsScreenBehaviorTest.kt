@@ -10,6 +10,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import cr.micampus.app.core.designsystem.MiCampusTheme
 import cr.micampus.app.core.model.ResourceKind
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -66,6 +67,51 @@ class ContentsScreenBehaviorTest {
         compose.onNodeWithText("Guía.pdf").assertIsDisplayed().performClick()
         assertEquals("file-1", openedFile)
         compose.onNodeWithContentDescription("Actualizar contenidos").assertIsDisplayed()
+    }
+
+    @Test fun navigableResourceUsesBrowserActionInsteadOfFileDownload() {
+        var openedResource: String? = null
+        var openedFile = false
+        val url = "https://moodle.test/mod/resource/view.php?id=101"
+        compose.setContent {
+            MiCampusTheme(dynamicColor = false) {
+                ContentsScreen(
+                    state = ContentsUiState(
+                        connected = true,
+                        courses = listOf(
+                            ContentCourseUi(
+                                id = 7,
+                                name = "Estructuras discretas",
+                                code = "EIF-203",
+                                sections = listOf(
+                                    ContentSectionUi(
+                                        id = 70,
+                                        name = "Semana 1",
+                                        resources = listOf(ContentResourceUi(101, "Sílabo", ResourceKind.PAGE, url, true, null, emptyList())),
+                                    ),
+                                ),
+                            ),
+                        ),
+                    ),
+                    onRefresh = {},
+                    onOpenSettings = {},
+                    onOpenResource = { openedResource = it },
+                    onOpenFile = { _, _, _ -> openedFile = true },
+                    onDeleteDownload = {},
+                    onSetFileStarred = { _, _ -> },
+                    onDeleteAllDownloads = {},
+                    onOpenFallback = {},
+                    onClearMessage = {},
+                )
+            }
+        }
+
+        compose.onNodeWithText("Semana 1").performClick()
+        compose.onNodeWithContentDescription("Abrir en Aula Virtual").assertIsDisplayed()
+        compose.onNodeWithText("Sílabo").performClick()
+
+        assertEquals(url, openedResource)
+        assertFalse(openedFile)
     }
 
     @Test fun starredFolderShowsGuidanceAndFileStarToggles() {

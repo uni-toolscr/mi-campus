@@ -462,22 +462,34 @@ internal object MoodleContentMapper {
         val contents = module.contents.orEmpty()
         val files = contents.mapNotNull { content -> toFile(moduleId, content) }
         if (kind in setOf(ResourceKind.FILE, ResourceKind.FOLDER) && contents.isNotEmpty() && files.isEmpty()) return null
+        val url = canonicalHttpsUrl(module.url)
+        val isSingleHtmlFile = kind == ResourceKind.FILE &&
+            files.size == 1 &&
+            files.single().isHtmlDocument() &&
+            url != null
         return LearningResource(
             id = "${MoodleClient.SOURCE}:course:$courseId:resource:$moduleId",
             remoteId = moduleId,
             name = plainText(module.name).ifBlank { kind.displayName() },
-            kind = kind,
+            kind = if (isSingleHtmlFile) ResourceKind.PAGE else kind,
             remoteOrder = moduleOrder,
-            url = canonicalUrl(module.url),
+            url = url,
             enabled = visible != false && availability == null,
             availabilityMessage = availability,
-            files = files,
+            files = if (isSingleHtmlFile) emptyList() else files,
         )
     }
 
+    private fun ResourceFile.isHtmlDocument(): Boolean = isHtmlDocument(name, mimeType)
+
+    private fun isHtmlDocument(name: String, mimeType: String?): Boolean =
+        mimeType?.substringBefore(';')?.trim()?.equals("text/html", ignoreCase = true) == true ||
+            name.substringAfterLast('.', "").equals("html", ignoreCase = true) ||
+            name.substringAfterLast('.', "").equals("htm", ignoreCase = true)
+
     private fun toFile(moduleId: Long, content: MoodleContentDto): ResourceFile? {
         val name = content.filename?.trim().orEmpty()
-        if (name.isBlank() || isDecorativeImageFile(name, content.mimetype)) return null
+        if (name.isBlank() || (isDecorativeImageFile(name, content.mimetype) && !isHtmlDocument(name, content.mimetype))) return null
         val url = canonicalUrl(content.fileurl) ?: return null
         val path = content.filepath?.takeIf(String::isNotBlank) ?: "/"
         return ResourceFile(
@@ -535,6 +547,17 @@ internal object MoodleContentMapper {
         }
     }
 
+    private fun canonicalHttpsUrl(value: String?): String? {
+        val canonical = canonicalUrl(value) ?: return null
+        return runCatching {
+            URI(canonical).takeIf { uri ->
+                uri.scheme.equals("https", ignoreCase = true) &&
+                    !uri.host.isNullOrBlank() &&
+                    uri.userInfo == null
+            }
+        }.getOrNull()?.let { canonical.replaceFirst(HTTPS_SCHEME, "https://") }
+    }
+
     private fun plainText(value: String?): String = value.orEmpty()
         .replace(HTML_TAG, " ")
         .replace("&amp;", "&")
@@ -547,6 +570,7 @@ internal object MoodleContentMapper {
 
     private val TOKEN_PARAMETERS = setOf("token", "wstoken")
     private val TOKEN_QUERY = Regex("([?&])(token|wstoken)=[^&]*&?", RegexOption.IGNORE_CASE)
+    private val HTTPS_SCHEME = Regex("^https://", RegexOption.IGNORE_CASE)
     private val EMPTY_QUERY = Regex("\\?&")
     private val HTML_TAG = Regex("<[^>]*>")
     private val WHITESPACE = Regex("\\s+")
