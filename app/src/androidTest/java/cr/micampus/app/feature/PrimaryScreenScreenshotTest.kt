@@ -24,6 +24,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.onNodeWithText
@@ -78,6 +79,7 @@ import cr.micampus.app.feature.contents.ContentSectionUi
 import cr.micampus.app.feature.contents.ContentsScreen
 import cr.micampus.app.feature.contents.ContentsUiState
 import cr.micampus.app.core.model.ResourceKind
+import cr.micampus.app.feature.settings.SettingsPage
 import cr.micampus.app.feature.settings.SettingsScreen
 import cr.micampus.app.feature.settings.SettingsUiState
 import cr.micampus.app.feature.settings.SettingsViewModel
@@ -207,7 +209,7 @@ class PrimaryScreenScreenshotTest {
         }
 
         compose.onNodeWithContentDescription("Calendario").performClick()
-        compose.mainClock.advanceTimeBy(300)
+        compose.mainClock.advanceTimeBy(1_000)
         compose.waitForIdle()
         compose.onNodeWithText("Inicio").assertDoesNotExist()
         compose.onNodeWithText("Calendario").assertIsDisplayed()
@@ -260,7 +262,8 @@ class PrimaryScreenScreenshotTest {
     @Test fun populatedCalendarBehindFloatingDockDarkScreenshotSmoke() {
         val container = app().container
         val viewModel = CalendarViewModel(container.events, container.calendar, container.reminders, container.settings)
-        val start = LocalDateTime.of(2026, 7, 18, 22, 16)
+        // Upcoming dates: the agenda folds past events away.
+        val start = LocalDate.now().plusDays(1).atTime(22, 16)
         val events = List(8) { index ->
             CampusEvent(
                 id = "dock-screenshot-$index",
@@ -298,7 +301,7 @@ class PrimaryScreenScreenshotTest {
                 }
             }
         }
-        compose.onNodeWithText("Evento de prueba 8").performScrollTo().assertIsDisplayed()
+        compose.scrollListTo("calendar-scroll-content", hasText("Evento de prueba 8")).assertIsDisplayed()
         assertNonEmpty(compose.onRoot().captureToImage())
     }
 
@@ -326,10 +329,11 @@ class PrimaryScreenScreenshotTest {
                     viewModel,
                     updateVm(),
                     onInstallUpdate = {},
+                    initialPage = SettingsPage.AI,
                 )
             }
         }
-        compose.onNodeWithText("IA y privacidad").performScrollTo()
+        compose.scrollSettingsToTag("local-ai-switch")
         assertNonEmpty(compose.onRoot().captureToImage())
     }
 
@@ -382,11 +386,12 @@ class PrimaryScreenScreenshotTest {
                     viewModel,
                     updateVm(),
                     onInstallUpdate = {},
+                    initialPage = SettingsPage.ACCOUNTS,
                 )
             }
         }
 
-        compose.onNodeWithText("Progreso académico").performScrollTo().assertIsDisplayed()
+        compose.scrollSettingsToText("Progreso académico").assertIsDisplayed()
         assertNonEmpty(compose.onRoot().captureToImage())
     }
 
@@ -531,10 +536,10 @@ class PrimaryScreenScreenshotTest {
         compose.setContent {
             val density = LocalDensity.current
             CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale)) {
-                MiCampusTheme(theme, dynamicColor = false) { SettingsScreen(state, viewModel, updateVm(), onInstallUpdate = {}) }
+                MiCampusTheme(theme, dynamicColor = false) { SettingsScreen(state, viewModel, updateVm(), onInstallUpdate = {}, initialPage = SettingsPage.AI) }
             }
         }
-        compose.onNodeWithText("IA y privacidad").performScrollTo()
+        compose.scrollSettingsToTag("local-ai-switch")
         assertNonEmpty(compose.onRoot().captureToImage())
     }
 

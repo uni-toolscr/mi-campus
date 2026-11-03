@@ -32,9 +32,20 @@ private val DarkCoursePalette = listOf(
 )
 
 @Composable
-fun coursePalette(): List<Pair<Color, Color>> {
+fun coursePalette(): List<Pair<Color, Color>> = coursePalette(dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f)
+
+/** The course palette for an explicit theme, for surfaces drawn outside MaterialTheme such as home-screen widgets. */
+fun coursePalette(dark: Boolean): List<Pair<Color, Color>> = if (dark) DarkCoursePalette else LightCoursePalette
+
+/**
+ * Course hues for small marks (dots, bars) drawn straight on the surface. A course container
+ * nearly matches the surface tone, so this uses the opposite theme's containers instead, which
+ * keep the same hue and index but contrast with the background.
+ */
+@Composable
+fun courseAccentPalette(): List<Color> {
     val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
-    return if (dark) DarkCoursePalette else LightCoursePalette
+    return coursePalette(!dark).map { it.first }
 }
 
 fun assignCourseColors(courseKeys: List<String>, stored: Map<String, CourseStyle>, paletteSize: Int): Map<String, Int> {

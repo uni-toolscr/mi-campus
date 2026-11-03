@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- Debug-only: `adb shell am broadcast -n cr.micampus.app/.debug.SampleDataReceiver` fills the app with a sample week. -->
+        <receiver
+            android:name=".debug.SampleDataReceiver"
+            android:exported="true" />
+    </application>
+</manifest>

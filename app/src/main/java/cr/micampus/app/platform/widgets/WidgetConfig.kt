@@ -51,7 +51,7 @@ fun ComponentActivity.appWidgetIdFromIntent(): Int = intent?.extras?.getInt(
     AppWidgetManager.INVALID_APPWIDGET_ID,
 ) ?: AppWidgetManager.INVALID_APPWIDGET_ID
 
-/** The institution filter a widget should default to, derived from onboarding settings. */
+/** The institution filter a widget should default to, derived from the institutions enabled in Ajustes. */
 suspend fun defaultInstitutionFilter(app: MiCampusApplication): String {
     val settings = runCatching { app.container.settings.current() }.getOrNull()
     return when (settings?.selectedInstitutions()?.toSet()) {
@@ -142,7 +142,7 @@ private fun InstitutionOption(label: String, value: String, selected: String, on
 /** Shared institution-only configuration screen used by the events and class widgets. */
 @Composable
 fun InstitutionOnlyConfig(app: MiCampusApplication, title: String, onConfirm: (String) -> Unit) {
-    // Wait for the onboarding-derived default before showing interactive controls, so a
+    // Wait for the institution default before showing interactive controls, so a
     // selection made during the async read is never overwritten when the default arrives.
     var defaultFilter by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(Unit) { defaultFilter = defaultInstitutionFilter(app) }

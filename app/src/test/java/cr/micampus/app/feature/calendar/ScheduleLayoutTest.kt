@@ -90,7 +90,7 @@ class ScheduleLayoutTest {
     }
 
     @Test fun assignCourseColorsWrapsOutOfRangeStoredIndex() {
-        val assigned = assignCourseColors(listOf("Curso A"), mapOf("Curso A" to CourseStyle("Curso A", 99, null)), 8)
+        val assigned = assignCourseColors(listOf("Curso A"), mapOf("Curso A" to CourseStyle("Curso A", 99)), 8)
         assertEquals(3, assigned.getValue("Curso A")) // 99 mod 8
     }
 
@@ -98,7 +98,7 @@ class ScheduleLayoutTest {
         val courses = listOf("Curso C", "Curso A", "Curso E", "Curso B", "Curso D")
         val initial = assignCourseColors(courses, emptyMap(), 8)
         val expanded = assignCourseColors(courses + "Curso F", emptyMap(), 8)
-        val stored = assignCourseColors(courses, mapOf("Curso C" to CourseStyle("Curso C", 6, "📚")), 8)
+        val stored = assignCourseColors(courses, mapOf("Curso C" to CourseStyle("Curso C", 6)), 8)
 
         assertEquals(5, initial.values.toSet().size)
         assertEquals(initial, assignCourseColors(courses, emptyMap(), 8))
@@ -116,6 +116,94 @@ class ScheduleLayoutTest {
         assertTrue(lanes.getValue(first) != lanes.getValue(overlap))
         assertEquals(0, lanes.getValue(first))
         assertEquals(0, lanes.getValue(later))
+    }
+
+    @Test fun scheduleDaysAddsWeekendOnlyWhenUsed() {
+        val weekdays = listOf(DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY, DayOfWeek.THURSDAY, DayOfWeek.FRIDAY)
+        assertEquals(weekdays, scheduleDays(listOf(slot("Cálculo", DayOfWeek.MONDAY, 8, 0, 10, 0))))
+        assertEquals(weekdays + DayOfWeek.SUNDAY, scheduleDays(listOf(slot("Taller", DayOfWeek.SUNDAY, 8, 0, 10, 0))))
+    }
+
+    @Test fun initialDayIsTodayOrTheNextListedDay() {
+        val weekdays = scheduleDays(emptyList())
+        assertEquals(DayOfWeek.WEDNESDAY, initialScheduleDay(weekdays, DayOfWeek.WEDNESDAY))
+        assertEquals(DayOfWeek.MONDAY, initialScheduleDay(weekdays, DayOfWeek.SATURDAY))
+        assertEquals(DayOfWeek.SATURDAY, initialScheduleDay(weekdays + DayOfWeek.SATURDAY, DayOfWeek.SATURDAY))
+    }
+
+    @Test fun dayRowsInsertFreeTimeOnlyForRealBreaks() {
+        val first = slot("Primera", DayOfWeek.MONDAY, 8, 0, 10, 0)
+        val overlap = slot("Cruce", DayOfWeek.MONDAY, 9, 0, 11, 0)
+        val later = slot("Después", DayOfWeek.MONDAY, 13, 30, 15, 0)
+        val otherDay = slot("Martes", DayOfWeek.TUESDAY, 8, 0, 9, 0)
+
+        val rows = dayScheduleRows(listOf(later, overlap, otherDay, first), DayOfWeek.MONDAY)
+
+        assertEquals(
+            listOf(
+                DayScheduleRow.Class(first),
+                DayScheduleRow.Class(overlap),
+                DayScheduleRow.FreeTime(150),
+                DayScheduleRow.Class(later),
+            ),
+            rows,
+        )
+    }
+
+    @Test fun dayRowsMarkNowBeforeTheNextClassWithLiveStatus() {
+        val done = slot("Química", DayOfWeek.WEDNESDAY, 8, 0, 9, 50)
+        val next = slot("Cálculo", DayOfWeek.WEDNESDAY, 10, 0, 11, 50)
+        val after = slot("Inglés", DayOfWeek.WEDNESDAY, 15, 0, 16, 40)
+        val now = LocalTime.of(9, 35)
+
+        val rows = dayScheduleRows(listOf(done, next, after), DayOfWeek.WEDNESDAY, now)
+
+        assertEquals(
+            listOf(
+                DayScheduleRow.Class(done, SlotStatus.InProgress),
+                DayScheduleRow.FreeTime(10),
+                DayScheduleRow.Class(next),
+                DayScheduleRow.FreeTime(190),
+                DayScheduleRow.Class(after),
+            ),
+            rows,
+        )
+        assertEquals(
+            listOf(
+                DayScheduleRow.Class(done, SlotStatus.Ended),
+                DayScheduleRow.FreeTime(10),
+                DayScheduleRow.Now(LocalTime.of(9, 55)),
+                DayScheduleRow.Class(next, SlotStatus.StartsIn(5)),
+                DayScheduleRow.FreeTime(190),
+                DayScheduleRow.Class(after),
+            ),
+            dayScheduleRows(listOf(done, next, after), DayOfWeek.WEDNESDAY, LocalTime.of(9, 55)),
+        )
+    }
+
+    @Test fun dayRowsAfterTheLastClassHaveNoNowMarker() {
+        val done = slot("Química", DayOfWeek.WEDNESDAY, 8, 0, 9, 50)
+
+        val rows = dayScheduleRows(listOf(done), DayOfWeek.WEDNESDAY, LocalTime.of(18, 0))
+
+        assertEquals(listOf(DayScheduleRow.Class(done, SlotStatus.Ended)), rows)
+    }
+
+    @Test fun shortDurationAndSummaryText() {
+        assertEquals("45 min", formatShortDuration(45))
+        assertEquals("2 h", formatShortDuration(120))
+        assertEquals("3 h 10 min", formatShortDuration(190))
+        assertEquals("1 curso · 1 clase por semana", scheduleSummary(listOf(slot("Cálculo", DayOfWeek.MONDAY, 8, 0, 10, 0))))
+        assertEquals(
+            "2 cursos · 3 clases por semana",
+            scheduleSummary(
+                listOf(
+                    slot("Cálculo", DayOfWeek.MONDAY, 8, 0, 10, 0),
+                    slot("Cálculo", DayOfWeek.WEDNESDAY, 8, 0, 10, 0),
+                    slot("Inglés", DayOfWeek.TUESDAY, 8, 0, 10, 0),
+                ),
+            ),
+        )
     }
 
     private fun event(id: String, title: String, year: Int, month: Int, day: Int, startHour: Int, startMinute: Int, endHour: Int, endMinute: Int) = CampusEvent(

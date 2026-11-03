@@ -1,53 +1,58 @@
 package cr.micampus.app.feature
 
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
-import androidx.compose.ui.test.assertIsSelected
-import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
-import androidx.compose.ui.test.assertTextContains
-import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
+import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onNodeWithContentDescription
-import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.unit.dp
 import androidx.test.platform.app.InstrumentationRegistry
+import cr.micampus.app.BuildConfig
 import cr.micampus.app.MiCampusApplication
 import cr.micampus.app.core.designsystem.AppBackgroundSurface
 import cr.micampus.app.core.designsystem.FloatingNavToolbar
 import cr.micampus.app.core.designsystem.MiCampusTheme
 import cr.micampus.app.core.designsystem.ShellTab
+import cr.micampus.app.core.model.AcademicCycle
+import cr.micampus.app.core.model.AcademicProgress
+import cr.micampus.app.core.model.AcademicProgressFilter
+import cr.micampus.app.core.model.AcademicTermProgress
 import cr.micampus.app.core.model.CalendarEventDraft
 import cr.micampus.app.core.model.CampusEvent
 import cr.micampus.app.core.model.EventCategory
 import cr.micampus.app.core.model.EventKind
 import cr.micampus.app.core.model.Institution
-import cr.micampus.app.core.model.AcademicProgress
-import cr.micampus.app.core.model.AcademicCycle
-import cr.micampus.app.core.model.AcademicProgressFilter
-import cr.micampus.app.core.model.AcademicTermProgress
 import cr.micampus.app.core.model.UnfinishedCoursePolicy
-import cr.micampus.app.feature.calendar.CalendarScreen
+import cr.micampus.app.data.document.DocumentStatus
+import cr.micampus.app.data.document.ImportedDocument
+import cr.micampus.app.data.local.AppSettings
 import cr.micampus.app.feature.calendar.CalendarPresentation
+import cr.micampus.app.feature.calendar.CalendarScreen
 import cr.micampus.app.feature.calendar.CalendarUiState
 import cr.micampus.app.feature.calendar.CalendarViewModel
 import cr.micampus.app.feature.chat.AssetChatKnowledgeStore
@@ -55,34 +60,31 @@ import cr.micampus.app.feature.chat.ChatScreen
 import cr.micampus.app.feature.chat.ChatUiState
 import cr.micampus.app.feature.chat.ChatViewModel
 import cr.micampus.app.feature.chat.LocalChatEventCommitter
-import cr.micampus.app.feature.transport.TransportScreen
-import cr.micampus.app.feature.transport.TransportViewModel
+import cr.micampus.app.feature.importer.ImportStage
 import cr.micampus.app.feature.importer.ImporterScreen
 import cr.micampus.app.feature.importer.ImporterUiState
 import cr.micampus.app.feature.importer.ImporterViewModel
-import cr.micampus.app.feature.importer.ImportStage
-import cr.micampus.app.data.document.DocumentStatus
-import cr.micampus.app.data.document.ImportedDocument
-import cr.micampus.app.data.local.AppSettings
-import cr.micampus.app.feature.settings.LocalAiAvailability
 import cr.micampus.app.feature.settings.AcademicProgressUiState
+import cr.micampus.app.feature.settings.LocalAiAvailability
 import cr.micampus.app.feature.settings.MoodleSettingsUiState
+import cr.micampus.app.feature.settings.SettingsPage
 import cr.micampus.app.feature.settings.SettingsScreen
 import cr.micampus.app.feature.settings.SettingsUiState
 import cr.micampus.app.feature.settings.SettingsViewModel
+import cr.micampus.app.feature.transport.TransportScreen
+import cr.micampus.app.feature.transport.TransportViewModel
 import cr.micampus.app.feature.update.UpdateViewModel
-import cr.micampus.app.BuildConfig
+import java.time.LocalDate
+import java.time.LocalTime
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
-import org.junit.Assert.assertTrue
-import java.time.LocalDate
-import java.time.LocalDateTime
-import java.time.LocalTime
 
 class ScreenBehaviorTest {
     @get:Rule val compose = createComposeRule()
 
-    @Test fun calendarAgendaControlsAreCollapsedAndOpenOnDemand() {
+    @Test fun calendarAgendaSearchAndFiltersAreAlwaysAvailable() {
         val container = app().container
         val viewModel = CalendarViewModel(container.events, container.calendar, container.reminders, container.settings)
         compose.setContent {
@@ -93,17 +95,16 @@ class ScreenBehaviorTest {
         }
 
         compose.onNodeWithText("Agenda").performClick()
-        compose.onNodeWithContentDescription("Filtrar agenda").performClick()
-        compose.onNodeWithText("Filtrar agenda").assertExists()
-        compose.onNodeWithText("Cancelar").performClick()
-        compose.onNodeWithContentDescription("Buscar en agenda").performClick()
-        compose.onNodeWithText("Buscar por curso o texto").assertExists()
+        compose.onNodeWithTag("agenda-search").assertIsDisplayed()
+        compose.onNodeWithText("Buscar curso, tarea o nota").assertExists()
+        compose.onNodeWithText("Pendientes").assertIsDisplayed()
     }
 
-    @Test fun calendarContentExtendsBehindSideBySideFloatingActions() {
+    @Test fun calendarContentExtendsBehindFloatingActions() {
         val container = app().container
         val viewModel = CalendarViewModel(container.events, container.calendar, container.reminders, container.settings)
-        val start = LocalDateTime.of(2026, 8, 3, 8, 0)
+        // Upcoming dates: the agenda folds past events away.
+        val start = LocalDate.now().plusDays(1).atTime(8, 0)
         val events = List(8) { index ->
             CampusEvent(
                 id = "dock-event-$index",
@@ -143,18 +144,21 @@ class ScreenBehaviorTest {
             }
         }
 
-        val exportBounds = compose.onNodeWithTag("calendar-export-action").assertIsDisplayed().getUnclippedBoundsInRoot()
         val createBounds = compose.onNodeWithTag("calendar-create-action").assertIsDisplayed().getUnclippedBoundsInRoot()
         val contentBounds = compose.onNodeWithTag("calendar-scroll-content").assertIsDisplayed().getUnclippedBoundsInRoot()
         val dockBounds = compose.onNodeWithTag("shared-floating-dock").assertIsDisplayed().getUnclippedBoundsInRoot()
-        assertTrue("Exportar debe mantenerse a la izquierda de crear", exportBounds.right <= createBounds.left)
-        assertTrue("Las acciones deben compartir la misma franja vertical", exportBounds.bottom > createBounds.top && createBounds.bottom > exportBounds.top)
         assertTrue("Crear debe quedar por encima del dock", createBounds.bottom <= dockBounds.top)
         assertTrue("La agenda debe extenderse detrás de las acciones flotantes", contentBounds.bottom > createBounds.top)
         assertTrue("La agenda debe extenderse detrás del dock", contentBounds.bottom > dockBounds.top)
-        val finalEvent = compose.onNodeWithText("Evento 7").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithContentDescription("Agregar").performClick()
+        compose.onNodeWithTag("calendar-import-action").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Cerrar menú").performClick()
+        compose.onNodeWithTag("calendar-overflow-action").performClick()
+        compose.onNodeWithTag("calendar-export-action").assertIsDisplayed().performClick()
+        compose.onNodeWithText("Cancelar").performClick()
+        val finalEvent = compose.scrollListTo("calendar-scroll-content", hasText("Evento 7")).assertIsDisplayed()
         val finalEventBounds = finalEvent.getUnclippedBoundsInRoot()
-        assertTrue("El último evento debe desplazarse por encima de las acciones", finalEventBounds.bottom <= createBounds.top)
+        assertTrue("El último evento debe desplazarse por encima del dock", finalEventBounds.bottom <= dockBounds.top)
     }
 
     @Test fun chatComposerWorksWithoutImportedDocuments() {
@@ -179,7 +183,7 @@ class ScreenBehaviorTest {
     @Test fun calendarAgendaLongPressEntersSelectionMode() {
         val container = app().container
         val viewModel = CalendarViewModel(container.events, container.calendar, container.reminders, container.settings)
-        val start = LocalDateTime.of(2026, 8, 3, 8, 0)
+        val start = LocalDate.now().plusDays(1).atTime(8, 0)
         val event = CampusEvent("select-event", "Examen de selección", Institution.UCR, EventKind.EXAM, start, start.plusHours(1))
         compose.setContent {
             MiCampusTheme(dynamicColor = false) {
@@ -209,7 +213,9 @@ class ScreenBehaviorTest {
 
         compose.onNodeWithText("UNA").performClick().assertIsSelected()
         compose.onNodeWithText("Omar Dengo → Benjamín Núñez").performClick().assertIsSelected()
-        compose.onNodeWithText("Información verificada").assertTextContains("Información verificada")
+        compose.onNodeWithTag("transport-list").performScrollToNode(hasTestTag("transport-dataset"))
+        compose.onNodeWithTag("transport-dataset").performClick()
+        compose.onNodeWithText("Información verificada").assertIsDisplayed()
     }
 
     @Test fun importedDraftCanBeOpenedEditedAndSaved() {
@@ -284,7 +290,7 @@ class ScreenBehaviorTest {
                 ImporterScreen(ImporterUiState(documents = listOf(document)), viewModel, {})
             }
         }
-        compose.onNodeWithText("PDF guardados").assertExists()
+        compose.onNodeWithText("Archivos guardados").assertExists()
         compose.onNodeWithText("Programa.pdf").assertExists()
         compose.onNodeWithText("Nube: gemini-3.1-flash-lite").assertExists()
     }
@@ -315,11 +321,12 @@ class ScreenBehaviorTest {
                     viewModel,
                     updateVm(),
                     onInstallUpdate = {},
+                    initialPage = SettingsPage.AI,
                 )
             }
         }
 
-        compose.onNodeWithTag("local-ai-switch").performScrollTo().assertIsNotEnabled()
+        compose.scrollSettingsToTag("local-ai-switch").assertIsNotEnabled()
         compose.onNodeWithText("No compatible o AICore aún no está disponible").assertExists()
         compose.onNodeWithText("Modelo local (Gemini Nano)").assert(
             SemanticsMatcher.expectValue(
@@ -351,11 +358,12 @@ class ScreenBehaviorTest {
                     viewModel,
                     updateVm(),
                     onInstallUpdate = {},
+                    initialPage = SettingsPage.ACCOUNTS,
                 )
             }
         }
 
-        compose.onNodeWithTag("academic-progress-card").performScrollTo().assertIsDisplayed()
+        compose.scrollSettingsToTag("academic-progress-card").assertIsDisplayed()
         compose.onNodeWithText("7.0 de 10.0 créditos aprobados").assertExists()
         compose.onNodeWithText("1 resultado con calificación sin clasificar fue excluido").assertExists()
         compose.onNodeWithText("2025 · Ciclo I · Sin nota: aprobados").assertExists()
@@ -385,11 +393,12 @@ class ScreenBehaviorTest {
                     viewModel,
                     updateVm(),
                     onInstallUpdate = {},
+                    initialPage = SettingsPage.ACCOUNTS,
                 )
             }
         }
 
-        compose.onNodeWithText("No hay datos para este período").performScrollTo().assertIsDisplayed()
+        compose.scrollSettingsToText("No hay datos para este período").assertIsDisplayed()
         compose.onNodeWithText("Filtrar").assertIsEnabled()
     }
 
@@ -406,11 +415,12 @@ class ScreenBehaviorTest {
                     viewModel,
                     updateVm(),
                     onInstallUpdate = {},
+                    initialPage = SettingsPage.ACCOUNTS,
                 )
             }
         }
 
-        compose.onNodeWithText("Progreso no disponible").performScrollTo().assertIsDisplayed()
+        compose.scrollSettingsToText("Progreso no disponible").assertIsDisplayed()
         compose.onNodeWithText("Actualizar progreso").assertIsEnabled()
     }
 
@@ -424,11 +434,12 @@ class ScreenBehaviorTest {
                     viewModel,
                     updateVm(),
                     onInstallUpdate = {},
+                    initialPage = SettingsPage.AI,
                 )
             }
         }
 
-        compose.onNodeWithTag("local-ai-switch").performScrollTo().assertIsEnabled()
+        compose.scrollSettingsToTag("local-ai-switch").assertIsEnabled()
         compose.onNodeWithText("Compatible; el modelo se descargará con tu confirmación").assertExists()
         compose.onNodeWithTag("cloud-ai-switch").assertIsEnabled()
     }
@@ -468,7 +479,8 @@ class ScreenBehaviorTest {
             }
         }
 
-        compose.onNodeWithText("Diagnóstico de importación").performScrollTo().assertExists()
+        compose.scrollSettingsToTag("settings-page-advanced").performClick()
+        compose.scrollSettingsToText("Diagnóstico de importación").assertExists()
         compose.onNodeWithText("Probar Gemini Nano").assertExists()
         compose.onNodeWithTag("nano-self-test").assertIsEnabled()
         compose.onNodeWithText("Exportar diagnóstico").assertExists()
@@ -485,8 +497,32 @@ class ScreenBehaviorTest {
             }
         }
 
+        compose.onNodeWithTag("settings-page-advanced").assertDoesNotExist()
         compose.onNodeWithText("Probar Gemini Nano").assertDoesNotExist()
         compose.onNodeWithText("Exportar diagnóstico").assertDoesNotExist()
+    }
+
+    @Test fun settingsFrontPageSummarizesAndOpensSubPages() {
+        val container = app().container
+        val viewModel = SettingsViewModel(container.settings, container.keyStore, container.events, container.reminders, container.moodle)
+        var closed = false
+        compose.setContent {
+            MiCampusTheme(dynamicColor = false) {
+                SettingsScreen(SettingsUiState(), viewModel, updateVm(), onInstallUpdate = {}, onBack = { closed = true })
+            }
+        }
+
+        compose.onNodeWithText("UCR y UNA").assertExists()
+        compose.onNodeWithText("Aula Virtual UNA: sin conectar").assertExists()
+        compose.scrollSettingsToText("Tema del sistema · 24 horas").assertExists()
+        compose.scrollSettingsToText("Desactivada · nada sale del teléfono").assertExists()
+        compose.scrollSettingsToTag("settings-page-accounts").performClick()
+        compose.onNodeWithText("Conectar Aula Virtual").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Atrás").performClick()
+        compose.onNodeWithTag("settings-page-accounts").assertIsDisplayed()
+        assertFalse(closed)
+        compose.onNodeWithContentDescription("Atrás").performClick()
+        assertTrue(closed)
     }
 
     private fun chatViewModel(): ChatViewModel {

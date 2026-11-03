@@ -6,4 +6,4 @@ dependencyResolutionManagement {
     repositories { google(); mavenCentral() }
 }
 rootProject.name = "MiCampus"
-include(":app")
+include(":app", ":baselineprofile")

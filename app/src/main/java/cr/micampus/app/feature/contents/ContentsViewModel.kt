@@ -14,14 +14,17 @@ import cr.micampus.app.data.moodle.MoodleSyncManager
 import java.io.File
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -86,7 +89,6 @@ data class ContentsUiState(
     val refreshing: Boolean = false,
     val unsupported: Boolean = false,
     val courses: List<ContentCourseUi> = emptyList(),
-    val progress: Map<String, MoodleFileDownloadProgress> = emptyMap(),
     val lastSyncEpoch: Long? = null,
     val message: String? = null,
     val fallbackUrl: String? = null,
@@ -128,13 +130,15 @@ class ContentsViewModel(
     private val refreshing = MutableStateFlow(false)
     private val message = MutableStateFlow<String?>(null)
     private val fallbackUrl = MutableStateFlow<String?>(null)
+    /** Kept apart from [state] so byte-level ticks only recompose the rows that show them. */
+    val downloadProgress: StateFlow<Map<String, MoodleFileDownloadProgress>> = repository.downloadProgress
     val effects = MutableSharedFlow<ContentsEffect>(extraBufferCapacity = 1)
 
     private val cached: Flow<MoodleCachedCatalog> = account.flatMapLatest { current ->
         current?.let(repository::catalog) ?: flowOf(EMPTY_CATALOG)
     }
 
-    private val baseState = combine(account, cached, refreshing, message, fallbackUrl) { current, catalog, busy, text, fallback ->
+    val state = combine(account, cached, refreshing, message, fallbackUrl) { current, catalog, busy, text, fallback ->
         val courses = catalog.toUiCourses()
         ContentsUiState(
             connected = current != null,
@@ -150,11 +154,7 @@ class ContentsViewModel(
             },
             fallbackUrl = fallback,
         )
-    }
-
-    val state = combine(baseState, repository.downloadProgress) { current, progress ->
-        current.copy(progress = progress)
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ContentsUiState())
+    }.flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ContentsUiState())
 
     fun onVisible() {
         val current = moodle.account()

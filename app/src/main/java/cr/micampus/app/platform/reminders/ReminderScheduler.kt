@@ -62,7 +62,7 @@ object ReminderPlanner {
     ): List<ReminderRequest> {
         val now = clock.instant()
         val eventStart = event.start.atZone(zone).toInstant()
-        if (!eventStart.isAfter(now)) return emptyList()
+        if (event.completed || !eventStart.isAfter(now)) return emptyList()
         val candidates = buildList {
             if (event.allDay) {
                 primaryOffset(event.kind)?.let { offset ->

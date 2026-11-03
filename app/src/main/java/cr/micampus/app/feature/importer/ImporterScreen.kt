@@ -5,61 +5,72 @@ import android.content.Intent
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.OpenInNew
+import androidx.compose.material.icons.automirrored.outlined.ArrowForward
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.UploadFile
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.LargeFlexibleTopAppBar
+import androidx.compose.material3.LinearWavyProgressIndicator
+import androidx.compose.material3.ListItemDefaults
+import androidx.compose.material3.ListItemShapes
+import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SegmentedListItem
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.toShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import cr.micampus.app.core.designsystem.EmptyState
 import cr.micampus.app.core.designsystem.LoadingState
+import cr.micampus.app.core.designsystem.groupedListColors
 import cr.micampus.app.core.designsystem.timeFormatter
 import cr.micampus.app.core.model.CalendarEventDraft
 import cr.micampus.app.core.model.Course
@@ -71,7 +82,7 @@ import cr.micampus.app.data.document.ImportedDocument
 import java.time.LocalDate
 import java.time.LocalTime
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun ImporterScreen(state: ImporterUiState, viewModel: ImporterViewModel, onClose: () -> Unit) {
     var editing by remember { mutableStateOf<CalendarEventDraft?>(null) }
@@ -128,9 +139,11 @@ fun ImporterScreen(state: ImporterUiState, viewModel: ImporterViewModel, onClose
         )
     }
     editing?.let { draft -> DraftEditor(draft, enabledInstitutions = state.enabledInstitutions, onDismiss = { editing = null }, onSave = { viewModel.updateDraft(it); editing = null }) }
+    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     Scaffold(
+        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
-            TopAppBar(
+            LargeFlexibleTopAppBar(
                 title = { Text(if (selectedDraftIds.isEmpty()) "Documentos y fuentes" else "${selectedDraftIds.size} seleccionados") },
                 navigationIcon = {
                     if (selectedDraftIds.isEmpty()) {
@@ -148,6 +161,7 @@ fun ImporterScreen(state: ImporterUiState, viewModel: ImporterViewModel, onClose
                         IconButton(onClick = { confirmDiscardSelected = true }) { Icon(Icons.Outlined.Delete, contentDescription = "Descartar borradores seleccionados") }
                     }
                 },
+                scrollBehavior = scrollBehavior,
             )
         },
     ) { padding ->
@@ -160,7 +174,13 @@ fun ImporterScreen(state: ImporterUiState, viewModel: ImporterViewModel, onClose
                 Button(onClick = viewModel::downloadNano, modifier = Modifier.fillMaxWidth().height(48.dp)) { Icon(Icons.Outlined.Download, contentDescription = null); Text(" Descargar en el dispositivo") }
                 if (state.cloudAiEnabled) OutlinedButton(onClick = viewModel::useCloudInsteadOfNano, modifier = Modifier.fillMaxWidth().height(48.dp)) { Text("Usar nube para este lote") }
                 OutlinedButton(onClick = viewModel::useManualEntry, modifier = Modifier.fillMaxWidth().height(48.dp)) { Text("Continuar manualmente") }
-                if (state.nanoBytes > 0 || state.nanoTotalBytes != null) Text(nanoProgressLabel(state.nanoBytes, state.nanoTotalBytes))
+                if (state.nanoBytes > 0 || state.nanoTotalBytes != null) {
+                    val total = state.nanoTotalBytes
+                    if (total != null && total > 0) {
+                        LinearWavyProgressIndicator(progress = { (state.nanoBytes.coerceAtMost(total).toFloat() / total) }, modifier = Modifier.fillMaxWidth())
+                    }
+                    Text(nanoProgressLabel(state.nanoBytes, state.nanoTotalBytes))
+                }
             }
             ImportStage.LOCAL_ERROR -> Column(Modifier.padding(padding).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 EmptyState("No se pudo usar Gemini Nano", state.message.orEmpty())
@@ -207,36 +227,42 @@ private fun nanoProgressLabel(downloaded: Long, total: Long?): String {
     }
 }
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun ImportStart(state: ImporterUiState, modifier: Modifier, onPick: () -> Unit, onManual: () -> Unit, onRetry: (String) -> Unit, onOpen: (String) -> Unit, onDelete: (String) -> Unit) {
-    LazyColumn(modifier.fillMaxSize().padding(horizontal = 20.dp), contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    LazyColumn(modifier.fillMaxSize().padding(horizontal = 20.dp), contentPadding = PaddingValues(vertical = 20.dp), verticalArrangement = Arrangement.spacedBy(ListItemDefaults.SegmentedGap)) {
         item {
-            Icon(Icons.Outlined.UploadFile, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-            Text("Archivos y fuentes para la IA", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+            Surface(shape = MaterialShapes.Cookie9Sided.toShape(), color = MaterialTheme.colorScheme.primaryContainer, modifier = Modifier.size(64.dp)) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(Icons.Outlined.UploadFile, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimaryContainer)
+                }
+            }
+            Text("Archivos y fuentes para la IA", style = MaterialTheme.typography.headlineSmallEmphasized, modifier = Modifier.padding(top = 12.dp))
             Text(
                 "Agrega hasta 10 archivos (PDF, texto o imagen). Se guardan de forma privada en este dispositivo y el asistente puede usarlos como fuente.",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(vertical = 12.dp),
             )
             Text("Primero se intenta texto local y OCR. Nada se confirma automáticamente.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 12.dp))
-            Button(onClick = onPick, modifier = Modifier.fillMaxWidth().height(56.dp), shape = androidx.compose.foundation.shape.RoundedCornerShape(28.dp)) { Text("Agregar archivos", style = MaterialTheme.typography.titleMedium) }
-            OutlinedButton(onClick = onManual, modifier = Modifier.fillMaxWidth().padding(top = 8.dp).height(52.dp), shape = androidx.compose.foundation.shape.RoundedCornerShape(26.dp)) { Text("Ingresar evento manualmente") }
+            Button(onClick = onPick, shapes = ButtonDefaults.shapes(), modifier = Modifier.fillMaxWidth().height(56.dp)) { Text("Agregar archivos", style = MaterialTheme.typography.titleMedium) }
+            OutlinedButton(onClick = onManual, shapes = ButtonDefaults.shapes(), modifier = Modifier.fillMaxWidth().padding(top = 8.dp).height(52.dp)) { Text("Ingresar evento manualmente") }
         }
-        state.message?.let { message -> item { Text(message, color = MaterialTheme.colorScheme.primary) } }
-        if (state.documents.isNotEmpty()) item { Text("Archivos guardados", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(top = 8.dp)) }
-        items(state.documents, key = ImportedDocument::id) { document ->
-            DocumentLibraryCard(document, onRetry, onOpen, onDelete)
+        state.message?.let { message -> item { Text(message, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 12.dp)) } }
+        if (state.documents.isNotEmpty()) item { SectionTitle("Archivos guardados") }
+        itemsIndexed(state.documents, key = { _, document -> document.id }) { index, document ->
+            DocumentLibraryItem(document, ListItemDefaults.segmentedShapes(index, state.documents.size), onRetry, onOpen, onDelete)
         }
     }
 }
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun BatchProgress(state: ImporterUiState, modifier: Modifier) {
-    LazyColumn(modifier.fillMaxSize().padding(horizontal = 20.dp), contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        item {
+    LazyColumn(modifier.fillMaxSize().padding(horizontal = 20.dp), contentPadding = PaddingValues(vertical = 20.dp), verticalArrangement = Arrangement.spacedBy(ListItemDefaults.SegmentedGap)) {
+        item(contentType = "header") { Column(Modifier.padding(bottom = 14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(state.currentDocumentName?.let { "Procesando $it…" } ?: "Guardando PDF localmente…", style = MaterialTheme.typography.titleLarge)
             if (state.partsTotal > 0) {
-                LinearProgressIndicator(
+                LinearWavyProgressIndicator(
                     progress = { state.partsDone / state.partsTotal.toFloat() },
                     modifier = Modifier
                         .fillMaxWidth()
@@ -244,7 +270,7 @@ private fun BatchProgress(state: ImporterUiState, modifier: Modifier) {
                 )
                 Text(state.message.orEmpty(), color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else {
-                LinearProgressIndicator(
+                LinearWavyProgressIndicator(
                     modifier = Modifier
                         .fillMaxWidth()
                         .semantics { contentDescription = "Análisis en curso" },
@@ -252,34 +278,53 @@ private fun BatchProgress(state: ImporterUiState, modifier: Modifier) {
                 state.message?.let { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             }
             Text("Los documentos se procesan uno por uno para evitar exceder límites.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        items(state.batchItems, key = BatchImportItem::id) { item ->
-            ElevatedCard(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(14.dp)) {
-                    Text(item.displayName, style = MaterialTheme.typography.titleMedium)
-                    Text(batchStatusLabel(item), style = MaterialTheme.typography.bodySmall, color = if (item.status == BatchItemStatus.FAILED) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
+        } }
+        itemsIndexed(state.batchItems, key = { _, item -> item.id }) { index, item ->
+            SegmentedListItem(
+                colors = groupedListColors(),
+                shapes = ListItemDefaults.segmentedShapes(index, state.batchItems.size),
+                supportingContent = {
+                    Text(batchStatusLabel(item), color = if (item.status == BatchItemStatus.FAILED) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
+                },
+            ) { Text(item.displayName) }
         }
     }
 }
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-private fun DocumentLibraryCard(document: ImportedDocument, onRetry: (String) -> Unit, onOpen: (String) -> Unit, onDelete: (String) -> Unit) {
-    ElevatedCard(Modifier.fillMaxWidth().semantics { contentDescription = "Archivo guardado ${document.displayName}" }) {
-        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(document.displayName, style = MaterialTheme.typography.titleMedium)
-            Text("${formatBytes(document.byteSize)} · ${documentStatusLabel(document)}", style = MaterialTheme.typography.bodySmall, color = if (document.status == DocumentStatus.FAILED) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
-            document.modelsUsed.takeIf(List<String>::isNotEmpty)?.let { models ->
-                Text(models.joinToString(" · ") { diagnosticModelLabel(it) }, style = MaterialTheme.typography.bodySmall)
+private fun DocumentLibraryItem(document: ImportedDocument, shapes: ListItemShapes, onRetry: (String) -> Unit, onOpen: (String) -> Unit, onDelete: (String) -> Unit) {
+    SegmentedListItem(
+        colors = groupedListColors(),
+        onClick = { onOpen(document.id) },
+        shapes = shapes,
+        modifier = Modifier.semantics { contentDescription = "Archivo guardado ${document.displayName}" },
+        leadingContent = { Icon(Icons.Outlined.Description, contentDescription = null) },
+        supportingContent = {
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text("${formatBytes(document.byteSize)} · ${documentStatusLabel(document)}", color = if (document.status == DocumentStatus.FAILED) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
+                document.modelsUsed.takeIf(List<String>::isNotEmpty)?.let { models ->
+                    Text(models.joinToString(" · ") { diagnosticModelLabel(it) }, style = MaterialTheme.typography.bodySmall)
+                }
             }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                IconButton(onClick = { onOpen(document.id) }) { Icon(Icons.AutoMirrored.Outlined.OpenInNew, contentDescription = "Abrir ${document.displayName}") }
+        },
+        trailingContent = {
+            Row {
                 IconButton(onClick = { onRetry(document.id) }) { Icon(Icons.Outlined.Refresh, contentDescription = "Reintentar ${document.displayName}") }
                 IconButton(onClick = { onDelete(document.id) }) { Icon(Icons.Outlined.Delete, contentDescription = "Eliminar ${document.displayName}") }
             }
-        }
-    }
+        },
+    ) { Text(document.displayName) }
+}
+
+@Composable
+private fun SectionTitle(text: String) {
+    Text(
+        text,
+        style = MaterialTheme.typography.titleMedium,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.padding(top = 20.dp, bottom = 8.dp).semantics { heading() },
+    )
 }
 
 internal fun diagnosticModelLabel(model: String): String = when {
@@ -301,6 +346,7 @@ private fun documentStatusLabel(document: ImportedDocument) = when (document.sta
 }
 private fun formatBytes(bytes: Long): String = if (bytes >= 1024 * 1024) "%.1f MiB".format(bytes / (1024.0 * 1024.0)) else "${bytes / 1024} KiB"
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun GroupPicker(state: ImporterUiState, modifier: Modifier, onSelect: (cr.micampus.app.core.model.CourseGroup) -> Unit, onSkip: () -> Unit) {
     val syllabus = state.syllabus ?: return
@@ -309,32 +355,38 @@ private fun GroupPicker(state: ImporterUiState, modifier: Modifier, onSelect: (c
         java.time.DayOfWeek.MONDAY to "lunes", java.time.DayOfWeek.TUESDAY to "martes", java.time.DayOfWeek.WEDNESDAY to "miércoles",
         java.time.DayOfWeek.THURSDAY to "jueves", java.time.DayOfWeek.FRIDAY to "viernes", java.time.DayOfWeek.SATURDAY to "sábado", java.time.DayOfWeek.SUNDAY to "domingo",
     )
-    LazyColumn(modifier.fillMaxSize().padding(horizontal = 20.dp), contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        item {
+    LazyColumn(modifier.fillMaxSize().padding(horizontal = 20.dp), contentPadding = PaddingValues(vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(ListItemDefaults.SegmentedGap)) {
+        item(contentType = "header") {
             Text("¿Cuál es tu grupo?", style = MaterialTheme.typography.headlineSmall)
             state.currentDocumentName?.let { Text(it, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary) }
             Text(
                 listOfNotNull(syllabus.course?.name, syllabus.course?.code).joinToString(" · ").ifBlank { "Curso detectado" },
                 style = MaterialTheme.typography.titleMedium,
             )
-            Text("Elige tu grupo para generar las clases del cronograma con el tema de cada día.", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
+            Text("Elige tu grupo para generar las clases del cronograma con el tema de cada día.", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp, bottom = 14.dp))
         }
-        items(syllabus.groups, key = { it.label }) { group ->
+        itemsIndexed(syllabus.groups, key = { _, group -> group.label }) { index, group ->
             val days = group.days.sorted().joinToString(" y ") { dayLabels[it] ?: it.name }
             val hours = listOfNotNull(group.startTime?.format(formatter), group.endTime?.format(formatter)).joinToString("–")
-            ElevatedCard(onClick = { onSelect(group) }, modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Grupo ${group.label}" }) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("Grupo ${group.label}", style = MaterialTheme.typography.titleLarge)
-                    Text(listOf(days, hours).filter(String::isNotBlank).joinToString(" · ").ifBlank { "Horario no detectado" })
-                    group.instructor?.takeIf(String::isNotBlank)?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                }
-            }
+            SegmentedListItem(
+                colors = groupedListColors(),
+                onClick = { onSelect(group) },
+                shapes = ListItemDefaults.segmentedShapes(index, syllabus.groups.size),
+                modifier = Modifier.semantics { contentDescription = "Grupo ${group.label}" },
+                supportingContent = {
+                    Column {
+                        Text(listOf(days, hours).filter(String::isNotBlank).joinToString(" · ").ifBlank { "Horario no detectado" })
+                        group.instructor?.takeIf(String::isNotBlank)?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                    }
+                },
+                trailingContent = { Icon(Icons.AutoMirrored.Outlined.ArrowForward, contentDescription = null) },
+            ) { Text("Grupo ${group.label}", style = MaterialTheme.typography.titleMedium) }
         }
-        item { OutlinedButton(onClick = onSkip, modifier = Modifier.fillMaxWidth().height(48.dp)) { Text("Omitir: solo exámenes y entregas") } }
+        item { OutlinedButton(onClick = onSkip, modifier = Modifier.fillMaxWidth().padding(top = 14.dp).height(48.dp)) { Text("Omitir: solo exámenes y entregas") } }
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun DraftReview(
     state: ImporterUiState,
@@ -348,52 +400,53 @@ private fun DraftReview(
     onAdd: () -> Unit,
 ) {
     val formatter = timeFormatter(state.use12hClock)
-    LazyColumn(modifier.fillMaxSize().padding(horizontal = 20.dp), contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        item { Text("Revisa antes de confirmar", style = MaterialTheme.typography.headlineSmall); Text("Los campos ambiguos permanecen vacíos o marcados.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
-        if (selectedDraftIds.isEmpty() && state.drafts.count { it.issues.isEmpty() } > 1) {
-            item { Button(onClick = onConfirmAll, modifier = Modifier.fillMaxWidth().height(48.dp)) { Text("Confirmar todos los que están listos (${state.drafts.count { it.issues.isEmpty() }})") } }
+    LazyColumn(modifier.fillMaxSize().padding(horizontal = 20.dp), contentPadding = PaddingValues(vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(ListItemDefaults.SegmentedGap)) {
+        item(contentType = "header") {
+            Column(Modifier.padding(bottom = 14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("Revisa antes de confirmar", style = MaterialTheme.typography.headlineSmall)
+                Text("Los campos ambiguos permanecen vacíos o marcados.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (selectedDraftIds.isEmpty() && state.drafts.count { it.issues.isEmpty() } > 1) {
+                    Button(onClick = onConfirmAll, shapes = ButtonDefaults.shapes(), modifier = Modifier.fillMaxWidth().padding(top = 8.dp).height(48.dp)) {
+                        Text("Confirmar todos los que están listos (${state.drafts.count { it.issues.isEmpty() }})")
+                    }
+                }
+            }
         }
-        items(state.drafts, key = { it.id }) { draft ->
+        itemsIndexed(state.drafts, key = { _, draft -> draft.id }) { index, draft ->
             val selected = draft.id in selectedDraftIds
-            ElevatedCard(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .combinedClickable(onClick = { onEdit(draft) }, onLongClick = { onLongPress(draft) })
-                    .semantics {
-                        this.selected = selected
-                        contentDescription = if (selected) "Borrador seleccionado: ${draft.title ?: "Sin título"}" else "Borrador: ${draft.title ?: "Sin título"}"
-                    },
-                colors = CardDefaults.elevatedCardColors(
-                    containerColor = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerLow,
-                ),
-            ) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Row(Modifier.fillMaxWidth()) {
-                        Text(draft.title ?: "Sin título", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
-                        if (selected) Icon(Icons.Outlined.CheckCircle, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                    }
-                    draft.sourceDocumentId?.let { sourceId ->
-                        state.documents.firstOrNull { it.id == sourceId }?.let { source ->
-                            Text("Origen: ${source.displayName}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
-                        }
-                    }
+            SegmentedListItem(
+                colors = groupedListColors(),
+                selected = selected,
+                onClick = { onEdit(draft) },
+                onLongClick = { onLongPress(draft) },
+                shapes = ListItemDefaults.segmentedShapes(index, state.drafts.size),
+                modifier = Modifier.semantics {
+                    contentDescription = if (selected) "Borrador seleccionado: ${draft.title ?: "Sin título"}" else "Borrador: ${draft.title ?: "Sin título"}"
+                },
+                overlineContent = draft.sourceDocumentId
+                    ?.let { sourceId -> state.documents.firstOrNull { it.id == sourceId } }
+                    ?.let { source -> { Text("Origen: ${source.displayName}", color = MaterialTheme.colorScheme.primary) } },
+                trailingContent = if (selected) {
+                    { Icon(Icons.Outlined.CheckCircle, contentDescription = null, tint = MaterialTheme.colorScheme.primary) }
+                } else null,
+                supportingContent = { Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     val hours = listOfNotNull(draft.startTime?.format(formatter), draft.endTime?.format(formatter)).joinToString("–")
                     Text(listOfNotNull(draft.date?.toString(), hours.takeIf(String::isNotBlank), draft.location).joinToString(" · ").ifBlank { "Faltan fecha y hora" })
                     draft.description?.takeIf(String::isNotBlank)?.let { Text(it, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                     if (draft.issues.isNotEmpty()) Text("Revisar: ${draft.issues.joinToString { issueLabel(it) }}", color = MaterialTheme.colorScheme.error)
                     draft.evidence?.excerpt?.takeIf(String::isNotBlank)?.let { Text("Página ${draft.sourcePage ?: "?"}: $it", style = MaterialTheme.typography.bodySmall) }
                     if (selectedDraftIds.isEmpty()) {
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
                             IconButton(onClick = { onDelete(draft.id) }) { Icon(Icons.Outlined.Delete, contentDescription = "Descartar borrador") }
                             TextButton(onClick = { onEdit(draft) }) { Text("Editar") }
-                            Button(onClick = { onConfirm(draft.id) }) { Text("Confirmar") }
+                            Button(onClick = { onConfirm(draft.id) }, shapes = ButtonDefaults.shapes()) { Text("Confirmar") }
                         }
                     }
-                }
-            }
+                } },
+            ) { Text(draft.title ?: "Sin título", style = MaterialTheme.typography.titleMedium) }
         }
-        if (selectedDraftIds.isEmpty()) item { OutlinedButton(onClick = onAdd, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Outlined.Add, contentDescription = null); Text(" Agregar manualmente") } }
-        state.message?.let { item { Text(it, color = MaterialTheme.colorScheme.primary) } }
+        if (selectedDraftIds.isEmpty()) item { OutlinedButton(onClick = onAdd, modifier = Modifier.fillMaxWidth().padding(top = 14.dp)) { Icon(Icons.Outlined.Add, contentDescription = null); Text(" Agregar manualmente") } }
+        state.message?.let { item { Text(it, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 12.dp)) } }
     }
 }
 

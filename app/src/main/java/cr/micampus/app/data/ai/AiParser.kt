@@ -453,7 +453,12 @@ class MlKitNanoEngine(
         com.google.mlkit.genai.prompt.Generation.getClient()
     },
 ) : LocalPromptEngine {
-    private var model = modelFactory()
+    // Created on first use: the app builds an engine per feature at startup, and binding to AICore
+    // there would cost startup time even for users who never touch local AI.
+    private var modelInstance: com.google.mlkit.genai.prompt.GenerativeModel? = null
+    private var model: com.google.mlkit.genai.prompt.GenerativeModel
+        get() = modelInstance ?: modelFactory().also { modelInstance = it }
+        set(value) { modelInstance = value }
     private var capability: NanoCapability = NanoCapability.UNAVAILABLE
     private var warmedUp = false
     private var tokenLimit: Int? = null
@@ -731,7 +736,7 @@ class MlKitNanoEngine(
     override suspend fun resetForRetry() {
         try {
             runOperation(OP_RECREATE_CLIENT) {
-                runCatching { model.close() }
+                runCatching { modelInstance?.close() }
                 model = modelFactory()
                 capability = NanoCapability.UNAVAILABLE
                 warmedUp = false
@@ -747,7 +752,8 @@ class MlKitNanoEngine(
     }
 
     override fun close() {
-        runCatching { model.close() }
+        runCatching { modelInstance?.close() }
+        modelInstance = null
     }
 
     private fun elapsedMillis(startedNanos: Long): Long = (System.nanoTime() - startedNanos) / 1_000_000

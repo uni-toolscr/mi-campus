@@ -62,16 +62,18 @@ class NanoEnginePolicyTest {
         assertEquals(UnexpectedTokenCountResolution.SDK_FAILURE, resolveUnexpectedTokenCountFailure(tinyProbeSucceeded = false))
     }
 
-    @Test fun explicitRetryRecreatesTheModelClient() = runBlocking {
+    @Test fun clientIsLazyAndExplicitRetryCreatesAFreshOne() = runBlocking {
         var clients = 0
         val engine = MlKitNanoEngine(modelFactory = {
             clients++
             modelProxy { method -> if (method == "close") Unit else error("Unexpected model operation: $method") }
         })
 
+        assertEquals("the client is created lazily, not at construction", 0, clients)
+
         engine.resetForRetry()
 
-        assertEquals(2, clients)
+        assertEquals(1, clients)
         engine.close()
     }
 

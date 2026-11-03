@@ -22,6 +22,7 @@ import cr.micampus.app.data.institution.AssetTransportRepository
 import cr.micampus.app.data.institution.UpcomingDeparture
 import cr.micampus.app.data.institution.directionKey
 import cr.micampus.app.data.institution.upcomingDepartures
+import cr.micampus.app.data.local.EventRepository
 import java.time.Clock
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -84,13 +85,14 @@ internal class AndroidBusWidgetAlarm(private val context: Context) : BusWidgetAl
 }
 
 /**
- * Owns the single, replaceable local alarm used by every installed bus widget.
- * The alarm is deliberately non-wakeup: a sleeping device does not need to
- * redraw a launcher that is not visible.
+ * Owns the single, replaceable local alarm behind every minute countdown on the home screen: bus
+ * departures and the class widget's start/end countdown. The alarm is deliberately non-wakeup: a
+ * sleeping device does not need to redraw a launcher that is not visible.
  */
 class BusWidgetRefreshCoordinator(
     private val context: Context,
     private val transport: AssetTransportRepository,
+    private val events: EventRepository,
     private val clock: Clock = Clock.systemDefaultZone(),
     private val alarm: BusWidgetAlarm = AndroidBusWidgetAlarm(context),
 ) {
@@ -101,15 +103,17 @@ class BusWidgetRefreshCoordinator(
     }
 
     private suspend fun synchronizeLocked() {
+        val manager = GlanceAppWidgetManager(context)
         val widget = BusesWidget()
-        val ids = GlanceAppWidgetManager(context).getGlanceIds(BusesWidget::class.java)
-        if (ids.isEmpty()) {
+        val ids = manager.getGlanceIds(BusesWidget::class.java)
+        val classIds = manager.getGlanceIds(ClassWidget::class.java)
+        if (ids.isEmpty() && classIds.isEmpty()) {
             alarm.cancel()
             return
         }
 
         val now = LocalDateTime.now(clock)
-        val plans = ids.mapNotNull { id ->
+        val busPlans = ids.mapNotNull { id ->
             val prefs = runCatching {
                 widget.getAppWidgetState<Preferences>(context, id)
             }.getOrNull() ?: return@mapNotNull null
@@ -119,7 +123,7 @@ class BusWidgetRefreshCoordinator(
                 ?.let { busWidgetRefreshPlan(it.departure, now) }
         }
 
-        val combinedPlan = earliestBusWidgetRefresh(plans)
+        val combinedPlan = earliestBusWidgetRefresh(busPlans + classPlans(classIds.isNotEmpty(), now))
         val nextAt = (combinedPlan as? BusWidgetRefreshPlan.RefreshAt)?.at
         if (nextAt == null) {
             alarm.cancel()
@@ -132,8 +136,19 @@ class BusWidgetRefreshCoordinator(
         alarm.replace(nextAt.atZone(clock.zone).toInstant().toEpochMilli(), precision)
     }
 
-    suspend fun refreshAndSynchronize() {
+    // Institution filters only narrow which class leads, so planning for the earliest class overall is
+    // at worst an extra refresh, never a missed one.
+    private suspend fun classPlans(hasClassWidgets: Boolean, now: LocalDateTime): List<BusWidgetRefreshPlan> {
+        if (!hasClassWidgets) return emptyList()
+        val classes = runCatching { upcomingClasses(events.allEntities().map { EventRepository.toDomain(it) }, now) }.getOrDefault(emptyList())
+        return listOfNotNull(classes.firstOrNull()?.let { classWidgetRefreshPlan(it, now) })
+    }
+
+    suspend fun refreshAndSynchronize(includeEvents: Boolean = false) {
         runCatching { BusesWidget().updateAll(context) }
+        runCatching { ClassWidget().updateAll(context) }
+        // Relative day labels ("Mañana") only change with the date, not with the minute alarm.
+        if (includeEvents) runCatching { EventsWidget().updateAll(context) }
         synchronize()
     }
 
@@ -187,7 +202,7 @@ class BusWidgetAlarmReceiver : BroadcastReceiver() {
 class BusWidgetSystemChangeReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action !in supportedActions) return
-        runBusWidgetReceiverWork(context) { it.refreshAndSynchronize() }
+        runBusWidgetReceiverWork(context) { it.refreshAndSynchronize(includeEvents = true) }
     }
 
     companion object {

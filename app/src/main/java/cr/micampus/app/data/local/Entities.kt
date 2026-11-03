@@ -22,6 +22,7 @@ data class ConfirmedEventEntity(
     val externalModifiedEpoch: Long? = null,
     val sourceDocumentId: String? = null,
     val notifyThirtyMinutesBefore: Boolean = false,
+    val completed: Boolean = false,
 )
 @Entity(tableName = "draft_events")
 data class DraftEventEntity(
@@ -57,7 +58,8 @@ data class ExportRecordEntity(
 data class CourseStyleEntity(
     @PrimaryKey val courseKey: String,
     val colorIndex: Int,
-    val emoji: String?,
+    /** Legacy course emoji; no longer shown or edited, kept to avoid a schema migration. */
+    val emoji: String? = null,
 )
 
 @Entity(tableName = "imported_documents", indices = [Index(value = ["sha256"], unique = true)])
@@ -204,7 +206,11 @@ fun reconcileRemoteEntities(
 ): RemoteEventEntityChanges {
     val existingById = existing.associateBy(ConfirmedEventEntity::id)
     val merged = incoming.map { row ->
-        row.copy(notifyThirtyMinutesBefore = existingById[row.id]?.notifyThirtyMinutesBefore ?: row.notifyThirtyMinutesBefore)
+        val previous = existingById[row.id]
+        row.copy(
+            notifyThirtyMinutesBefore = previous?.notifyThirtyMinutesBefore ?: row.notifyThirtyMinutesBefore,
+            completed = previous?.completed ?: row.completed,
+        )
     }
     val incomingIds = merged.mapTo(mutableSetOf(), ConfirmedEventEntity::id)
     return RemoteEventEntityChanges(
@@ -220,6 +226,7 @@ fun reconcileRemoteEntities(
     @Query("SELECT * FROM confirmed_events WHERE endEpoch >= :from ORDER BY startEpoch") suspend fun confirmedNow(from: Long): List<ConfirmedEventEntity>
     @Query("SELECT * FROM confirmed_events ORDER BY startEpoch") suspend fun confirmedAll(): List<ConfirmedEventEntity>
     @Query("SELECT * FROM confirmed_events WHERE id = :id LIMIT 1") suspend fun confirmedById(id: String): ConfirmedEventEntity?
+    @Query("UPDATE confirmed_events SET completed = :completed WHERE id = :id") suspend fun setCompleted(id: String, completed: Boolean)
     @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun upsert(event: ConfirmedEventEntity)
     @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun upsertAll(events: List<ConfirmedEventEntity>)
     @Delete suspend fun delete(event: ConfirmedEventEntity)
@@ -367,7 +374,7 @@ interface MoodleContentDao {
     @Query("DELETE FROM moodle_starred_files WHERE accountId = :accountId") suspend fun deleteStarredFiles(accountId: String)
 }
 
-@Database(entities = [ConfirmedEventEntity::class, DraftEventEntity::class, ExportRecordEntity::class, CourseStyleEntity::class, ImportedDocumentEntity::class, DocumentImportAttemptEntity::class, SyllabusTopicEntity::class, DocumentTranscriptionEntity::class, MoodleCourseEntity::class, MoodleSectionEntity::class, MoodleResourceEntity::class, MoodleFileEntity::class, MoodleStarredFileEntity::class, MoodleContentSyncStateEntity::class], version = 13, exportSchema = false)
+@Database(entities = [ConfirmedEventEntity::class, DraftEventEntity::class, ExportRecordEntity::class, CourseStyleEntity::class, ImportedDocumentEntity::class, DocumentImportAttemptEntity::class, SyllabusTopicEntity::class, DocumentTranscriptionEntity::class, MoodleCourseEntity::class, MoodleSectionEntity::class, MoodleResourceEntity::class, MoodleFileEntity::class, MoodleStarredFileEntity::class, MoodleContentSyncStateEntity::class], version = 14, exportSchema = false)
 abstract class MiCampusDatabase : RoomDatabase() {
     abstract fun eventDao(): EventDao
     abstract fun importedDocumentDao(): ImportedDocumentDao

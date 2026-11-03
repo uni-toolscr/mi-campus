@@ -15,11 +15,12 @@ class EventRepository(private val dao: EventDao) : MoodleEventStore {
     val confirmedEvents: Flow<List<CampusEvent>> = confirmed.map { rows -> rows.map(::toDomain) }
     val drafts: Flow<List<DraftEventEntity>> = dao.drafts()
     val draftModels: Flow<List<CalendarEventDraft>> = drafts.map { rows -> rows.map(::toDraft) }
-    val courseStyles: Flow<List<CourseStyle>> = dao.courseStyles().map { rows -> rows.map { CourseStyle(it.courseKey, it.colorIndex, it.emoji) } }
+    val courseStyles: Flow<List<CourseStyle>> = dao.courseStyles().map { rows -> rows.map { CourseStyle(it.courseKey, it.colorIndex) } }
     fun upcoming(now: Instant = Instant.now()): Flow<List<ConfirmedEventEntity>> = dao.upcoming(now.toEpochMilli())
     suspend fun futureEntities(now: Instant = Instant.now()) = dao.confirmedNow(now.toEpochMilli())
     suspend fun allEntities() = dao.confirmedAll()
     suspend fun confirmedById(id: String): CampusEvent? = dao.confirmedById(id)?.let(::toDomain)
+    suspend fun setCompleted(id: String, completed: Boolean) = dao.setCompleted(id, completed)
     suspend fun saveDraft(draft: DraftEventEntity) = dao.upsertDraft(draft)
     suspend fun updateDraft(draft: DraftEventEntity) = dao.upsertDraft(draft)
     suspend fun deleteDraft(id: String) = dao.deleteDraft(id)
@@ -42,7 +43,7 @@ class EventRepository(private val dao: EventDao) : MoodleEventStore {
     suspend fun removeConfirmed(event: ConfirmedEventEntity) = dao.delete(event)
     suspend fun exportRecord(eventId: String, calendarId: String) = dao.exportRecord(eventId, calendarId)
     suspend fun saveExportRecord(record: ExportRecordEntity) = dao.saveExportRecord(record)
-    suspend fun saveCourseStyle(style: CourseStyle) = dao.upsertCourseStyle(CourseStyleEntity(style.courseKey, style.colorIndex, style.emoji))
+    suspend fun saveCourseStyle(style: CourseStyle) = dao.upsertCourseStyle(CourseStyleEntity(style.courseKey, style.colorIndex))
     override suspend fun replaceRemoteWindow(source: String, from: Instant, to: Instant, events: List<CampusEvent>): RemoteSyncChanges {
         val rows = events.map { it.copy(source = source).toEntity() }
         val changes = dao.replaceSourceWindow(source, from.toEpochMilli(), to.toEpochMilli(), rows)
@@ -71,6 +72,7 @@ class EventRepository(private val dao: EventDao) : MoodleEventStore {
             externalModifiedEpoch = row.externalModifiedEpoch,
             sourceDocumentId = row.sourceDocumentId,
             notifyThirtyMinutesBefore = row.notifyThirtyMinutesBefore,
+            completed = row.completed,
         )
 
         fun toDraft(row: DraftEventEntity) = CalendarEventDraft(
@@ -115,6 +117,7 @@ fun CampusEvent.toEntity(zone: ZoneId = ZoneId.systemDefault()) = ConfirmedEvent
     externalModifiedEpoch = externalModifiedEpoch,
     sourceDocumentId = sourceDocumentId,
     notifyThirtyMinutesBefore = notifyThirtyMinutesBefore,
+    completed = completed,
 )
 
 fun CalendarEventDraft.toEntity(now: Instant = Instant.now()) = DraftEventEntity(

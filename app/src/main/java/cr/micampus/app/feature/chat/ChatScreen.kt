@@ -27,16 +27,18 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -49,11 +51,13 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -71,7 +75,7 @@ import kotlinx.coroutines.launch
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun ChatScreen(state: ChatUiState, viewModel: ChatViewModel, onBack: () -> Unit, onOpenFiles: () -> Unit) {
     var question by rememberSaveable { mutableStateOf("") }
@@ -107,33 +111,22 @@ fun ChatScreen(state: ChatUiState, viewModel: ChatViewModel, onBack: () -> Unit,
         }
     }
 
+    val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
     Scaffold(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier.fillMaxSize().nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
             TopAppBar(
-                title = {
-                    Column {
-                        Text("Chat")
-                        Text(
-                            "Asistente local con fuentes institucionales",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                },
+                title = { Text("Chat") },
+                subtitle = { Text("Asistente local con fuentes institucionales") },
                 navigationIcon = {
-                    TextButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = null)
-                        Spacer(Modifier.width(4.dp))
-                        Text("Atrás")
-                    }
+                    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Atrás") }
                 },
                 actions = {
-                    IconButton(onClick = onOpenFiles) {
+                    FilledTonalIconButton(onClick = onOpenFiles) {
                         Icon(Icons.Outlined.Add, contentDescription = "Fuentes y archivos")
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+                scrollBehavior = scrollBehavior,
             )
         },
         bottomBar = {
@@ -152,7 +145,7 @@ fun ChatScreen(state: ChatUiState, viewModel: ChatViewModel, onBack: () -> Unit,
                         Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        OutlinedTextField(
+                        TextField(
                             value = question,
                             onValueChange = { question = it },
                             modifier = Modifier.weight(1f),
@@ -160,13 +153,14 @@ fun ChatScreen(state: ChatUiState, viewModel: ChatViewModel, onBack: () -> Unit,
                             enabled = state.status == ChatEngineStatus.IDLE,
                             minLines = 1,
                             maxLines = 4,
-                            shape = MaterialTheme.shapes.extraLarge,
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                                disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                                unfocusedBorderColor = Color.Transparent,
-                                disabledBorderColor = Color.Transparent,
+                            shape = composerShape,
+                            colors = TextFieldDefaults.colors(
+                                focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                                disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                                focusedIndicatorColor = Color.Transparent,
+                                unfocusedIndicatorColor = Color.Transparent,
+                                disabledIndicatorColor = Color.Transparent,
                             ),
                             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                             keyboardActions = KeyboardActions(onSend = { send() }),
@@ -175,6 +169,7 @@ fun ChatScreen(state: ChatUiState, viewModel: ChatViewModel, onBack: () -> Unit,
                         FilledIconButton(
                             onClick = send,
                             enabled = question.isNotBlank() && state.status == ChatEngineStatus.IDLE,
+                            shapes = IconButtonDefaults.shapes(),
                             modifier = Modifier.size(56.dp).semantics { contentDescription = "Enviar" },
                         ) { Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null) }
                     }
@@ -259,7 +254,7 @@ private fun KnowledgeScopeNotice(state: ChatUiState) {
     Surface(
         color = MaterialTheme.colorScheme.secondaryContainer,
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-        shape = MaterialTheme.shapes.medium,
+        shape = MaterialTheme.shapes.large,
     ) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text("Contexto del estudiante: $selected", style = MaterialTheme.typography.labelLarge)
@@ -275,8 +270,9 @@ private fun KnowledgeScopeNotice(state: ChatUiState) {
     }
 }
 
-private val userBubbleShape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp, bottomEnd = 8.dp, bottomStart = 24.dp)
-private val assistantBubbleShape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp, bottomEnd = 24.dp, bottomStart = 8.dp)
+private val userBubbleShape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp, bottomEnd = 6.dp, bottomStart = 20.dp)
+private val assistantBubbleShape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp, bottomEnd = 20.dp, bottomStart = 6.dp)
+private val composerShape = RoundedCornerShape(28.dp)
 
 @Composable
 private fun MessageBubble(
@@ -324,6 +320,7 @@ private fun MessageBubble(
     }
 }
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun EventProposalCard(
     proposal: ChatEventProposal,
@@ -339,15 +336,15 @@ private fun EventProposalCard(
     Surface(
         color = colors.tertiaryContainer,
         contentColor = colors.onTertiaryContainer,
-        shape = MaterialTheme.shapes.large,
+        shape = MaterialTheme.shapes.extraLarge,
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
     ) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(
                 "Propuesta de evento",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
+                style = MaterialTheme.typography.titleMediumEmphasized,
                 color = colors.onTertiaryContainer,
+                modifier = Modifier.semantics { heading() },
             )
             Text(proposal.title ?: "Título pendiente", color = colors.onTertiaryContainer)
             proposal.date?.let { date ->

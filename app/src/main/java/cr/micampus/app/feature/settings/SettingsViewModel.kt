@@ -172,7 +172,7 @@ class SettingsViewModel(
             message.value = "Debes mantener al menos una institución activa"
             return
         }
-        viewModelScope.launch { store.setOnboarding(true, ucr, una) }
+        viewModelScope.launch { store.setInstitutions(ucr, una) }
     }
 
     fun setTheme(mode: ThemeMode) = viewModelScope.launch { store.setTheme(mode) }

@@ -14,10 +14,6 @@
     <string name="widget_events_empty">Todavía no hay eventos</string>
     <string name="widget_buses_empty">No hay servicio</string>
     <string name="widget_class_empty">No hay más clases hoy</string>
-    <string name="widget_next_departure_in">En %1$d min · próxima salida</string>
-    <string name="widget_next_departure_in_short">En %1$d min</string>
-    <string name="widget_next_departure_scheduled">Próxima salida</string>
-    <string name="widget_departing_now">Saliendo ahora</string>
     <string name="widget_institution_ucr">UCR</string>
     <string name="widget_institution_una">UNA</string>
     <string name="widget_institution_both">Ambas</string>

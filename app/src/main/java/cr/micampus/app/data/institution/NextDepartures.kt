@@ -2,7 +2,9 @@ package cr.micampus.app.data.institution
 
 import cr.micampus.app.core.model.Institution
 import cr.micampus.app.core.model.ServiceStatus
+import cr.micampus.app.core.model.TransportService
 import java.time.Duration
+import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
 
@@ -51,4 +53,22 @@ fun AssetTransportRepository.upcomingDepartures(
                     ?.let { UpcomingDeparture(institution, direction.id, direction.from, direction.to, it) }
             }
     }.sortedBy { it.departure }.take(limit)
+}
+
+/**
+ * The service for [from] followed by up to [verifiedDaysAfter] later verified service days
+ * of one direction. Transporte picks its next departure from these, so after the last bus
+ * (or on a day without service) it can still lead with the next one, and a screen left
+ * open past midnight keeps a following day to fall back on.
+ */
+fun AssetTransportRepository.serviceDays(
+    institution: Institution,
+    directionId: String,
+    from: LocalDate,
+    verifiedDaysAfter: Int = 2,
+): List<TransportService> {
+    val later = generateSequence(nextValidDate(institution, directionId, from.plusDays(1))) {
+        nextValidDate(institution, directionId, it.plusDays(1))
+    }.take(verifiedDaysAfter).map { service(institution, directionId, it) }
+    return listOf(service(institution, directionId, from)) + later
 }

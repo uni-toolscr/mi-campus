@@ -7,7 +7,7 @@ object DatabaseProvider {
     @Volatile private var instance: MiCampusDatabase? = null
     fun get(context: Context): MiCampusDatabase = instance ?: synchronized(this) {
         instance ?: Room.databaseBuilder(context.applicationContext, MiCampusDatabase::class.java, "micampus.db")
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14)
             .build()
             .also { instance = it }
     }
@@ -101,5 +101,10 @@ val MIGRATION_11_12 = object : androidx.room.migration.Migration(11, 12) {
 val MIGRATION_12_13 = object : androidx.room.migration.Migration(12, 13) {
     override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
         db.execSQL("CREATE TABLE IF NOT EXISTS moodle_starred_files (accountId TEXT NOT NULL, fileId TEXT NOT NULL, PRIMARY KEY(accountId, fileId))")
+    }
+}
+val MIGRATION_13_14 = object : androidx.room.migration.Migration(13, 14) {
+    override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE confirmed_events ADD COLUMN completed INTEGER NOT NULL DEFAULT 0")
     }
 }

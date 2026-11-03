@@ -12,11 +12,13 @@ import cr.micampus.app.platform.calendar.CalendarChoice
 import cr.micampus.app.platform.calendar.CalendarExporter
 import cr.micampus.app.platform.calendar.ExportResult
 import cr.micampus.app.platform.reminders.ReminderScheduling
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -93,7 +95,7 @@ class CalendarViewModel(
             semesterEnd = appSettings.semesterEnd,
             courseStyles = courseStyles,
         )
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), CalendarUiState())
+    }.flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), CalendarUiState())
 
     fun setPresentation(value: CalendarPresentation) = controls.update { it.copy(presentation = value) }
     fun setWeek(value: LocalDate) = controls.update { it.copy(weekStart = mondayOf(value)) }

@@ -2,6 +2,7 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.plugin.compose")
     id("com.google.devtools.ksp")
+    id("androidx.baselineprofile")
 }
 
 val configuredVersionCode = providers.gradleProperty("versionCode")
@@ -44,6 +45,9 @@ android {
     }
     buildTypes {
         getByName("release") {
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             if (releaseSigningConfigured) {
                 signingConfig = signingConfigs.getByName("release")
             }
@@ -53,6 +57,11 @@ android {
     packaging { resources.excludes += "/META-INF/{AL2.0,LGPL2.1}" }
 }
 kotlin { jvmToolchain(17) }
+// Profiles are generated on demand (./gradlew :app:generateBaselineProfile) and committed under src/main.
+baselineProfile {
+    automaticGenerationDuringBuild = false
+    saveInSrc = true
+}
 dependencies {
     implementation(libs.androidx.core.ktx); implementation(libs.androidx.activity.compose)
     implementation(platform(libs.androidx.compose.bom)); implementation(libs.bundles.compose)
@@ -61,6 +70,8 @@ dependencies {
     implementation(libs.androidx.lifecycle.viewmodel.compose); implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.compose.material3.adaptive)
     implementation(libs.gson)
+    implementation(libs.androidx.profileinstaller)
+    baselineProfile(project(":baselineprofile"))
     implementation(libs.androidx.glance.appwidget)
     implementation(libs.mlkit.text)
     implementation(libs.genai.prompt)

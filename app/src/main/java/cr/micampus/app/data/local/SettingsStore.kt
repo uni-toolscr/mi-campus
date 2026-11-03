@@ -33,7 +33,6 @@ internal fun resolveAiSettings(local: Boolean?, cloud: Boolean?, legacy: Boolean
     AiSettingsFlags(local = local ?: legacy ?: false, cloud = cloud ?: legacy ?: false)
 
 data class AppSettings(
-    val onboardingDone: Boolean = false,
     val ucrEnabled: Boolean = true,
     val unaEnabled: Boolean = true,
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
@@ -69,7 +68,6 @@ class SettingsStore internal constructor(private val dataStore: DataStore<Prefer
     constructor(context: Context) : this(context.settingsDataStore)
 
     private object Keys {
-        val done = booleanPreferencesKey("onboarding_done")
         val ucr = booleanPreferencesKey("ucr")
         val una = booleanPreferencesKey("una")
         val legacyDark = booleanPreferencesKey("dark")
@@ -95,7 +93,6 @@ class SettingsStore internal constructor(private val dataStore: DataStore<Prefer
         val fallbackTheme = if (p[Keys.legacyDark] == true) ThemeMode.DARK else ThemeMode.SYSTEM
         val ai = resolveAiSettings(p[Keys.localAi], p[Keys.cloudAi], p[Keys.legacyAi])
         AppSettings(
-            onboardingDone = p[Keys.done] ?: false,
             ucrEnabled = p[Keys.ucr] ?: true,
             unaEnabled = p[Keys.una] ?: true,
             themeMode = p[Keys.theme]?.let { runCatching { ThemeMode.valueOf(it) }.getOrNull() } ?: fallbackTheme,
@@ -122,7 +119,7 @@ class SettingsStore internal constructor(private val dataStore: DataStore<Prefer
             dismissedUpdateVersion = p[Keys.dismissedUpdateVersion],
         )
     }
-    suspend fun setOnboarding(done: Boolean, ucr: Boolean, una: Boolean) = dataStore.edit { it[Keys.done] = done; it[Keys.ucr] = ucr; it[Keys.una] = una }
+    suspend fun setInstitutions(ucr: Boolean, una: Boolean) = dataStore.edit { it[Keys.ucr] = ucr; it[Keys.una] = una }
     suspend fun setTheme(value: ThemeMode) = dataStore.edit { it[Keys.theme] = value.name }
     suspend fun setReminders(value: Boolean) = dataStore.edit { it[Keys.reminders] = value }
     suspend fun setExactReminders(value: Boolean) = dataStore.edit { it[Keys.exact] = value }

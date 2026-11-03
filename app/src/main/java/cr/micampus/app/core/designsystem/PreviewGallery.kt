@@ -8,19 +8,9 @@ import cr.micampus.app.core.model.ThemeMode
 import cr.micampus.app.core.model.TransportService
 import cr.micampus.app.feature.home.HomeScreen
 import cr.micampus.app.feature.home.HomeUiState
-import cr.micampus.app.feature.onboarding.OnboardingScreen
-import cr.micampus.app.feature.onboarding.OnboardingUiState
 import cr.micampus.app.feature.transport.TransportScreen
 import cr.micampus.app.feature.transport.TransportUiState
 import java.time.LocalDate
-
-@Preview(name = "Onboarding", widthDp = 390, heightDp = 844, showBackground = true)
-@Composable
-private fun OnboardingPreview() {
-    MiCampusTheme(dynamicColor = false) {
-        OnboardingScreen(OnboardingUiState(), {}, {}, {})
-    }
-}
 
 @Preview(name = "Inicio vacío", widthDp = 390, heightDp = 844, showBackground = true)
 @Composable

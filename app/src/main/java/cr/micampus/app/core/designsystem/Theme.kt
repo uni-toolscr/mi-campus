@@ -25,9 +25,7 @@ private val Dark = darkColorScheme(
     tertiary = Color(0xFFD9BDE2),
 )
 
-// The expressive theme entry points (MaterialExpressiveTheme, expressiveLightColorScheme) are
-// internal in the resolved material3 artifact, so the expressive feel comes from this larger
-// corner-radius scale plus the expressive components used across the screens.
+// Larger corner radii than the M3 defaults, matching the expressive components used across the screens.
 private val ExpressiveShapes = Shapes(
     extraSmall = RoundedCornerShape(8.dp),
     small = RoundedCornerShape(12.dp),
@@ -54,6 +52,7 @@ internal fun ColorScheme.ensureDarkContainers(): ColorScheme {
     )
 }
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun MiCampusTheme(
     themeMode: ThemeMode = ThemeMode.SYSTEM,
@@ -73,5 +72,11 @@ fun MiCampusTheme(
         else -> Light
     }
     val safeColors = if (dark) colors.ensureDarkContainers() else colors
-    MaterialTheme(colorScheme = safeColors, typography = Typography(), shapes = ExpressiveShapes, content = content)
+    MaterialExpressiveTheme(
+        colorScheme = safeColors,
+        motionScheme = MotionScheme.expressive(),
+        shapes = ExpressiveShapes,
+        typography = Typography(),
+        content = content,
+    )
 }

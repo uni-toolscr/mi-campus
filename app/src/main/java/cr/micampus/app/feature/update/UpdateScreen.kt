@@ -8,7 +8,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.LinearWavyProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -17,6 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import cr.micampus.app.data.update.UpdateDownloadState
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun UpdateAvailableDialog(state: UpdateUiState, onDownload: () -> Unit, onInstall: () -> Unit, onDismiss: () -> Unit) {
     val downloading = state.download is UpdateDownloadState.Downloading
@@ -35,12 +37,12 @@ fun UpdateAvailableDialog(state: UpdateUiState, onDownload: () -> Unit, onInstal
                 when (val download = state.download) {
                     is UpdateDownloadState.Downloading -> {
                         if (download.totalBytes > 0) {
-                            LinearProgressIndicator(
+                            LinearWavyProgressIndicator(
                                 progress = { download.bytesRead.toFloat() / download.totalBytes.coerceAtLeast(1) },
                                 modifier = Modifier.fillMaxWidth(),
                             )
                         } else {
-                            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                            LinearWavyProgressIndicator(modifier = Modifier.fillMaxWidth())
                         }
                     }
                     is UpdateDownloadState.Failed -> Text(download.message, color = MaterialTheme.colorScheme.error)

@@ -45,7 +45,7 @@ class AppContainer(context: Context) {
     )
     val calendar: CalendarExporter = CalendarExporter(context)
     val reminders: ReminderScheduler = ReminderScheduler(context)
-    val busWidgetRefresh: BusWidgetRefreshCoordinator = BusWidgetRefreshCoordinator(context.applicationContext, transport)
+    val busWidgetRefresh: BusWidgetRefreshCoordinator = BusWidgetRefreshCoordinator(context.applicationContext, transport, events)
     val widgets: WidgetRefresher = WidgetRefresher(context.applicationContext, busWidgetRefresh)
     val moodleAccounts: MoodleAccountStore = MoodleAccountStore(context)
     val moodleSyncScheduler: MoodleSyncScheduler = MoodleSyncScheduler(context.applicationContext)

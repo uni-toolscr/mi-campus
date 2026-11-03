@@ -20,27 +20,27 @@ class ClassWidgetSelectionTest {
     )
 
     @Test
-    fun `keeps upcoming and in-progress classes today, drops everything else`() {
+    fun `keeps classes that have not ended, soonest first, so the one in progress leads`() {
         val upcoming = classAt("upcoming", now.plusHours(1), now.plusHours(3))
         val inProgress = classAt("in-progress", now.minusHours(1), now.plusMinutes(30))
         val endedToday = classAt("ended", now.minusHours(4), now.minusHours(2))
         val tomorrow = classAt("tomorrow", now.plusDays(1), now.plusDays(1).plusHours(2))
         val yesterday = classAt("yesterday", now.minusDays(1), now.minusDays(1).plusHours(2))
 
-        val result = todaysClasses(listOf(upcoming, inProgress, endedToday, tomorrow, yesterday), now)
+        val result = upcomingClasses(listOf(tomorrow, upcoming, inProgress, endedToday, yesterday), now)
 
-        assertEquals(listOf(upcoming, inProgress), result)
+        assertEquals(listOf(inProgress, upcoming, tomorrow), result)
     }
 
     @Test
-    fun `class ending exactly now is still included`() {
+    fun `class ending exactly now has handed over to the next one`() {
         val endingNow = classAt("ending-now", now.minusHours(2), now)
-        assertEquals(listOf(endingNow), todaysClasses(listOf(endingNow), now))
+        assertEquals(emptyList<CampusEvent>(), upcomingClasses(listOf(endingNow), now))
     }
 
     @Test
-    fun `empty when no classes today`() {
-        val tomorrow = classAt("tomorrow", now.plusDays(1), now.plusDays(1).plusHours(2))
-        assertEquals(emptyList<CampusEvent>(), todaysClasses(listOf(tomorrow), now))
+    fun `non-class events never lead the class widget`() {
+        val exam = classAt("exam", now.plusHours(1), now.plusHours(2)).copy(kind = EventKind.EXAM)
+        assertEquals(emptyList<CampusEvent>(), upcomingClasses(listOf(exam), now))
     }
 }

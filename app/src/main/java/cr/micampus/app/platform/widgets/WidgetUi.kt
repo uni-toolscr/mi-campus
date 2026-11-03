@@ -3,7 +3,9 @@ package cr.micampus.app.platform.widgets
 import android.content.Context
 import android.content.Intent
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpSize
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.datastore.preferences.core.Preferences
@@ -18,10 +20,13 @@ import androidx.glance.action.clickable
 import androidx.glance.appwidget.action.actionStartActivity
 import androidx.glance.appwidget.cornerRadius
 import androidx.glance.background
+import androidx.glance.color.ColorProvider
 import androidx.glance.layout.Alignment
+import androidx.glance.layout.Box
 import androidx.glance.layout.Column
 import androidx.glance.layout.ColumnScope
 import androidx.glance.layout.Row
+import androidx.glance.layout.RowScope
 import androidx.glance.layout.Spacer
 import androidx.glance.layout.fillMaxSize
 import androidx.glance.layout.fillMaxWidth
@@ -34,35 +39,37 @@ import androidx.glance.semantics.semantics
 import androidx.glance.text.FontWeight
 import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
+import androidx.glance.unit.ColorProvider
 import cr.micampus.app.MainActivity
+import cr.micampus.app.MiCampusApplication
 import cr.micampus.app.R
+import cr.micampus.app.core.designsystem.assignCourseColors
+import cr.micampus.app.core.designsystem.coursePalette
+import cr.micampus.app.core.designsystem.timeFormatter
+import cr.micampus.app.core.model.CampusEvent
+import cr.micampus.app.core.model.CourseStyle
 import cr.micampus.app.core.model.Institution
+import cr.micampus.app.feature.home.HeroTiming
+import cr.micampus.app.feature.home.HomeCourse
+import cr.micampus.app.feature.home.heroTimingLabel
+import cr.micampus.app.feature.home.homeCourses
+import cr.micampus.app.feature.home.matchCourseKey
+import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
+import java.time.temporal.ChronoUnit
+import java.util.Locale
+import kotlinx.coroutines.flow.first
 
 /**
- * Shared size tiers for all home-screen widgets. The responsive sizes advertised by
- * each provider are 110 x 110, 110 x 180, 180 x 110, 180 x 180, 250 x 110,
- * 250 x 180, and 250 x 280 dp. SQUARE is a single-hero surface; NARROW,
- * COMPACT, MEDIUM, and TALL show two, one, two, and four items respectively.
+ * Shared size tiers for all home-screen widgets. The responsive sizes advertised by each provider
+ * are 110 x 110, 110 x 180, 180 x 110, 180 x 180, 250 x 110, 250 x 180, and 250 x 280 dp.
+ * SQUARE and NARROW draw a single card, COMPACT a single row, MEDIUM and TALL a header plus a list.
  */
-enum class WidgetSizeTier(val itemLimit: Int) {
-    SQUARE(1),
-    NARROW(2),
-    COMPACT(1),
-    MEDIUM(2),
-    TALL(4),
-}
+enum class WidgetSizeTier { SQUARE, NARROW, COMPACT, MEDIUM, TALL }
 
-val WidgetSizeTier.showsHeader: Boolean
-    get() = this != WidgetSizeTier.SQUARE
-
-val WidgetSizeTier.showsHeaderTitle: Boolean
+val WidgetSizeTier.showsList: Boolean
     get() = this == WidgetSizeTier.MEDIUM || this == WidgetSizeTier.TALL
-
-val WidgetSizeTier.heroTopAligned: Boolean
-    get() = this == WidgetSizeTier.NARROW || this == WidgetSizeTier.MEDIUM || this == WidgetSizeTier.TALL
-
-val WidgetSizeTier.followupShowsTrailing: Boolean
-    get() = this != WidgetSizeTier.NARROW
 
 val WIDGET_RESPONSIVE_SIZES = setOf(
     DpSize(110.dp, 110.dp),
@@ -80,71 +87,6 @@ fun widgetSizeTier(size: DpSize): WidgetSizeTier = when {
     size.width < 250.dp -> WidgetSizeTier.NARROW
     size.height < 280.dp -> WidgetSizeTier.MEDIUM
     else -> WidgetSizeTier.TALL
-}
-
-/** Content-specific constraints for the shared [HeroItem] layout. */
-enum class HeroItemContent { BUS, EVENT }
-
-/** The optional hero detail line that receives an accent pill treatment. */
-enum class HeroBadgeSlot { NONE, PRIMARY, SECONDARY }
-
-/** Text rules for a hero at each responsive size tier. */
-data class HeroItemPresentation(
-    val headlineMaxLines: Int,
-    val primaryMaxLines: Int,
-    val secondaryMaxLines: Int,
-    val showSecondary: Boolean,
-    val headlineSp: Int,
-    val bodySp: Int?,
-    val secondaryShortLabel: Boolean,
-    val showInlineIcon: Boolean,
-    val badgeSlot: HeroBadgeSlot,
-)
-
-fun heroItemPresentation(tier: WidgetSizeTier, content: HeroItemContent): HeroItemPresentation {
-    val showInlineIcon = tier == WidgetSizeTier.SQUARE
-    return when (content) {
-        HeroItemContent.BUS -> when (tier) {
-            WidgetSizeTier.SQUARE -> HeroItemPresentation(1, 3, 1, true, 16, 11, true, showInlineIcon, HeroBadgeSlot.SECONDARY)
-            WidgetSizeTier.NARROW -> HeroItemPresentation(1, 2, 1, true, 18, 12, true, showInlineIcon, HeroBadgeSlot.SECONDARY)
-            WidgetSizeTier.COMPACT -> HeroItemPresentation(1, 1, 1, true, 18, 12, true, showInlineIcon, HeroBadgeSlot.SECONDARY)
-            WidgetSizeTier.MEDIUM -> HeroItemPresentation(1, 1, 1, true, 22, null, false, showInlineIcon, HeroBadgeSlot.SECONDARY)
-            WidgetSizeTier.TALL -> HeroItemPresentation(1, 1, 1, true, 28, null, false, showInlineIcon, HeroBadgeSlot.SECONDARY)
-        }
-        HeroItemContent.EVENT -> when (tier) {
-            WidgetSizeTier.SQUARE -> HeroItemPresentation(2, 1, 2, true, 16, 11, false, showInlineIcon, HeroBadgeSlot.PRIMARY)
-            WidgetSizeTier.NARROW -> HeroItemPresentation(2, 1, 1, true, 18, 12, false, showInlineIcon, HeroBadgeSlot.PRIMARY)
-            WidgetSizeTier.COMPACT -> HeroItemPresentation(1, 1, 1, false, 18, 12, false, showInlineIcon, HeroBadgeSlot.PRIMARY)
-            WidgetSizeTier.MEDIUM -> HeroItemPresentation(2, 1, 1, true, 22, null, false, showInlineIcon, HeroBadgeSlot.PRIMARY)
-            WidgetSizeTier.TALL -> HeroItemPresentation(2, 1, 1, true, 28, null, false, showInlineIcon, HeroBadgeSlot.PRIMARY)
-        }
-    }
-}
-
-/** Horizontal and vertical hero padding, in dp, selected by responsive tier. */
-data class HeroPaddingDp(val horizontal: Int, val vertical: Int)
-
-fun widgetOuterPaddingDp(tier: WidgetSizeTier): Int = when (tier) {
-    WidgetSizeTier.SQUARE -> 4
-    WidgetSizeTier.NARROW -> 6
-    WidgetSizeTier.COMPACT -> 8
-    WidgetSizeTier.MEDIUM -> 10
-    WidgetSizeTier.TALL -> 14
-}
-
-fun heroPaddingDp(tier: WidgetSizeTier): HeroPaddingDp = when (tier) {
-    WidgetSizeTier.SQUARE -> HeroPaddingDp(horizontal = 4, vertical = 4)
-    WidgetSizeTier.NARROW -> HeroPaddingDp(horizontal = 8, vertical = 6)
-    WidgetSizeTier.COMPACT -> HeroPaddingDp(horizontal = 10, vertical = 6)
-    WidgetSizeTier.MEDIUM -> HeroPaddingDp(horizontal = 12, vertical = 8)
-    WidgetSizeTier.TALL -> HeroPaddingDp(horizontal = 16, vertical = 12)
-}
-
-fun widgetHeaderIconSizeDp(tier: WidgetSizeTier): Int = when (tier) {
-    WidgetSizeTier.NARROW, WidgetSizeTier.COMPACT -> 16
-    WidgetSizeTier.MEDIUM -> 18
-    WidgetSizeTier.TALL -> 20
-    WidgetSizeTier.SQUARE -> 0
 }
 
 // --- Widget deep-link targets -------------------------------------------------
@@ -186,230 +128,269 @@ fun widgetInstitutionLabel(context: Context, filter: String): String = when (fil
 fun parseDirectionFilter(raw: String?): Set<String> =
     raw?.split(',')?.map(String::trim)?.filter(String::isNotEmpty)?.toSet().orEmpty()
 
-// --- Shared Glance composables ------------------------------------------------
+// --- Course colors and time labels --------------------------------------------
 
-/**
- * Outer widget frame: taps open the app, a tinted icon + bold title header, then the
- * caller-supplied body. The host rounds the outer corners on Android 12+, so we leave the
- * surface square here and only round the inner hero/rows.
- */
-@Composable
-fun WidgetShell(
-    title: String,
-    iconRes: Int,
-    description: String,
-    launchDestination: String,
-    tier: WidgetSizeTier,
-    content: @Composable ColumnScope.() -> Unit,
-) {
-    val dense = tier != WidgetSizeTier.TALL
-    val context = LocalContext.current
-    val launchIntent = Intent(context, MainActivity::class.java)
-        .putExtra(EXTRA_WIDGET_DESTINATION, launchDestination)
-    Column(
-        modifier = GlanceModifier
-            .fillMaxSize()
-            .background(GlanceTheme.colors.surface)
-            .padding(widgetOuterPaddingDp(tier).dp)
-            .clickable(actionStartActivity(launchIntent))
-            .semantics { contentDescription = description },
-    ) {
-        if (tier.showsHeader) {
-            Row(
-                modifier = GlanceModifier.fillMaxWidth()
-                    .padding(bottom = if (dense) 4.dp else 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Image(
-                    provider = ImageProvider(iconRes),
-                    contentDescription = null,
-                    colorFilter = ColorFilter.tint(GlanceTheme.colors.primary),
-                    modifier = GlanceModifier.size(widgetHeaderIconSizeDp(tier).dp),
-                )
-                if (tier.showsHeaderTitle) {
-                    Spacer(GlanceModifier.width(8.dp))
-                    Text(
-                        text = title,
-                        maxLines = 1,
-                        style = TextStyle(fontWeight = FontWeight.Bold, color = GlanceTheme.colors.onSurface),
-                    )
-                }
-            }
+/** Day/night colors for one course, the same hues the app uses for it in Inicio and Horario. */
+data class WidgetCourseColors(val container: ColorProvider, val onContainer: ColorProvider, val accent: ColorProvider)
+
+fun widgetCourseColors(index: Int): WidgetCourseColors {
+    val (dayContainer, dayOn) = coursePalette(dark = false)[index]
+    val (nightContainer, nightOn) = coursePalette(dark = true)[index]
+    return WidgetCourseColors(
+        container = ColorProvider(day = dayContainer, night = nightContainer),
+        onContainer = ColorProvider(day = dayOn, night = nightOn),
+        // Marks on the widget surface use the opposite theme's container, as courseAccentPalette() does in the app.
+        accent = ColorProvider(day = nightContainer, night = dayContainer),
+    )
+}
+
+/** Matches events to courses and palette indices exactly like Inicio, so a course keeps its color on the home screen. */
+class WidgetCourses(private val courses: List<HomeCourse>, private val colorIndex: Map<String, Int>) {
+    fun keyFor(event: CampusEvent): String? = matchCourseKey(event, courses)
+
+    fun colorsFor(event: CampusEvent): WidgetCourseColors? = keyFor(event)?.let(colorIndex::get)?.let(::widgetCourseColors)
+
+    fun codeFor(event: CampusEvent): String? =
+        event.courseCode?.trim()?.takeIf(String::isNotEmpty) ?: keyFor(event)?.let { key -> courses.firstOrNull { it.key == key }?.code }
+
+    companion object {
+        fun of(events: List<CampusEvent>, styles: List<CourseStyle>, now: LocalDateTime): WidgetCourses {
+            val courses = homeCourses(events, now)
+            val indices = assignCourseColors(courses.map(HomeCourse::key), styles.associateBy(CourseStyle::courseKey), coursePalette(dark = false).size)
+            return WidgetCourses(courses, indices)
         }
-        content()
     }
 }
 
+suspend fun loadWidgetCourses(app: MiCampusApplication, events: List<CampusEvent>, now: LocalDateTime): WidgetCourses {
+    val styles = runCatching { app.container.events.courseStyles.first() }.getOrDefault(emptyList())
+    return WidgetCourses.of(events, styles, now)
+}
+
+/** "Hoy 23:00", "Mañana 8:00", "Mié 8:00", or a full date beyond the coming week, as Inicio phrases it. */
+fun widgetWhenLabel(start: LocalDateTime, today: LocalDate, use12h: Boolean): String =
+    if (start.toLocalDate() == today) {
+        "Hoy ${start.format(timeFormatter(use12h))}"
+    } else {
+        heroTimingLabel(HeroTiming.Later(start), today, use12h)
+    }
+
+private val costaRica = Locale.forLanguageTag("es-CR")
+private val badgeClock12 = DateTimeFormatter.ofPattern("h:mm", costaRica)
+private val badgeMeridiem = DateTimeFormatter.ofPattern("a", costaRica)
+private val badgeDate = DateTimeFormatter.ofPattern("d MMM", costaRica)
+private val shortDays = listOf("lun", "mar", "mié", "jue", "vie", "sáb", "dom")
+
+/** A clock time split for a badge: "8:00" plus "a. m." in 12h mode, since the full string doesn't fit the shape. */
+data class BadgeClock(val time: String, val meridiem: String?)
+
+fun badgeClock(time: LocalDateTime, use12h: Boolean): BadgeClock =
+    if (use12h) BadgeClock(time.format(badgeClock12), time.format(badgeMeridiem).replace('\u202F', ' ').replace('\u00A0', ' ')) else BadgeClock(time.format(timeFormatter(false)), null)
+
+/** Lowercase day for a badge: "hoy", "mañana", "mié" within the week, else "9 nov". */
+fun widgetDayLabel(date: LocalDate, today: LocalDate): String = when (val days = ChronoUnit.DAYS.between(today, date)) {
+    0L -> "hoy"
+    1L -> "mañana"
+    in 2L..6L -> shortDays[date.dayOfWeek.value - 1]
+    else -> date.format(badgeDate).replace(".", "")
+}
+
+/** Days from [today] to [date] as a short badge: "en 9 días". */
+fun widgetDaysAwayLabel(date: LocalDate, today: LocalDate): String {
+    val days = ChronoUnit.DAYS.between(today, date)
+    return if (days == 1L) "en 1 día" else "en $days días"
+}
+
+// --- Shared Glance composables ------------------------------------------------
+
+private val GroupCorner = 20.dp
+private val SegmentCorner = 6.dp
+private val SegmentGap = 2.dp
+
 /**
- * Groups a hero + follow-up rows into one cohesive card: the outer cornerRadius clips the
- * stacked children to a single rounded outline, so only the group's outer corners round and the
- * internal seams between items stay square. Items should carry no corner radius of their own and
- * be separated by [WidgetCardSeam]. cornerRadius/clipping applies on API 31+; on 26–30 the group
- * renders square (acceptable for MVP).
+ * Outer widget frame: taps open the app on [launchDestination]. The launcher rounds the outer
+ * corners on Android 12+, so the frame itself stays square.
  */
 @Composable
-fun ColumnScope.WidgetCardGroup(tier: WidgetSizeTier, content: @Composable ColumnScope.() -> Unit) {
+fun WidgetFrame(
+    description: String,
+    launchDestination: String,
+    background: ColorProvider = GlanceTheme.colors.widgetBackground,
+    padding: Dp = 12.dp,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    val context = LocalContext.current
+    val launchIntent = Intent(context, MainActivity::class.java).putExtra(EXTRA_WIDGET_DESTINATION, launchDestination)
     Column(
         modifier = GlanceModifier
-            .fillMaxWidth()
-            .defaultWeight()
-            .cornerRadius(24.dp),
+            .fillMaxSize()
+            .background(background)
+            .padding(padding)
+            .clickable(actionStartActivity(launchIntent))
+            .semantics { contentDescription = description },
         content = content,
     )
 }
 
-/** Thin surface-colored divider between items inside a [WidgetCardGroup], reading as a square seam. */
+/** Small label row above a widget's content, with optional trailing context such as a count. */
 @Composable
-fun WidgetCardSeam() {
-    Spacer(GlanceModifier.fillMaxWidth().height(2.dp).background(GlanceTheme.colors.surface))
-}
-
-/**
- * Prominent "next up" card mirroring the in-app Transporte hero: big [headline], a [primary]
- * line, and an optional muted [secondary] line, on a primaryContainer surface. [heroIconRes] is
- * shown inline when the shell header is hidden. Corners come from the enclosing [WidgetCardGroup],
- * not this item.
- */
-@Composable
-fun ColumnScope.HeroItem(
-    headline: String,
-    primary: String,
-    secondary: String?,
-    heroIconRes: Int?,
-    tier: WidgetSizeTier,
-    content: HeroItemContent,
-) {
-    val presentation = heroItemPresentation(tier, content)
-    val padding = heroPaddingDp(tier)
-    val bodyFontSize = presentation.bodySp?.sp
-    val primaryIsBadge = presentation.badgeSlot == HeroBadgeSlot.PRIMARY
-    val secondaryIsBadge = presentation.badgeSlot == HeroBadgeSlot.SECONDARY
-    val badgeModifier = GlanceModifier
-        .background(GlanceTheme.colors.primary)
-        .cornerRadius(12.dp)
-        .padding(horizontal = 8.dp, vertical = 3.dp)
-    Column(
-        modifier = GlanceModifier
-            .fillMaxWidth()
-            .defaultWeight()
-            .background(GlanceTheme.colors.primaryContainer)
-            .padding(horizontal = padding.horizontal.dp, vertical = padding.vertical.dp),
-        verticalAlignment = if (tier.heroTopAligned) Alignment.Top else Alignment.CenterVertically,
-    ) {
-        if (presentation.showInlineIcon && heroIconRes != null) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Image(
-                    provider = ImageProvider(heroIconRes),
-                    contentDescription = null,
-                    colorFilter = ColorFilter.tint(GlanceTheme.colors.primary),
-                    modifier = GlanceModifier.size(16.dp),
-                )
-                Spacer(GlanceModifier.width(6.dp))
-                Text(
-                    text = headline,
-                    maxLines = presentation.headlineMaxLines,
-                    style = TextStyle(
-                        fontSize = presentation.headlineSp.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = GlanceTheme.colors.onPrimaryContainer,
-                    ),
-                )
-            }
-        } else {
-            Text(
-                text = headline,
-                maxLines = presentation.headlineMaxLines,
-                style = TextStyle(
-                    fontSize = presentation.headlineSp.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = GlanceTheme.colors.onPrimaryContainer,
-                ),
-            )
-        }
-        if (presentation.showInlineIcon) {
-            Spacer(GlanceModifier.height(2.dp))
-        }
-        if (primaryIsBadge) {
-            Spacer(GlanceModifier.height(4.dp))
-        }
-        Text(
-            text = primary,
-            maxLines = if (primaryIsBadge) 1 else presentation.primaryMaxLines,
-            style = TextStyle(
-                fontSize = bodyFontSize,
-                fontWeight = FontWeight.Medium,
-                color = if (primaryIsBadge) GlanceTheme.colors.onPrimary else GlanceTheme.colors.onPrimaryContainer,
-            ),
-            modifier = if (primaryIsBadge) badgeModifier else GlanceModifier,
-        )
-        if (presentation.showSecondary && !secondary.isNullOrBlank()) {
-            if (secondaryIsBadge) {
-                Spacer(GlanceModifier.height(4.dp))
-            }
-            Text(
-                text = secondary,
-                maxLines = if (secondaryIsBadge) 1 else presentation.secondaryMaxLines,
-                style = TextStyle(
-                    fontSize = bodyFontSize,
-                    color = if (secondaryIsBadge) GlanceTheme.colors.onPrimary else GlanceTheme.colors.onPrimaryContainer,
-                ),
-                modifier = if (secondaryIsBadge) badgeModifier else GlanceModifier,
-            )
-        }
-    }
-}
-
-/**
- * Compact follow-up row (subsequent departures/events) on a secondaryContainer. Corners come from
- * the enclosing [WidgetCardGroup]; rows are separated by [WidgetCardSeam].
- */
-@Composable
-fun FollowupRow(leading: String, trailing: String, tier: WidgetSizeTier) {
-    val dense = tier != WidgetSizeTier.TALL
+fun WidgetHeader(label: String, trailing: String? = null, iconRes: Int? = null) {
     Row(
-        modifier = GlanceModifier
-            .fillMaxWidth()
-            .background(GlanceTheme.colors.secondaryContainer)
-            .padding(horizontal = if (dense) 12.dp else 14.dp, vertical = if (dense) 6.dp else 10.dp),
+        modifier = GlanceModifier.fillMaxWidth().padding(start = 4.dp, end = 4.dp, bottom = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        if (iconRes != null) {
+            Image(
+                provider = ImageProvider(iconRes),
+                contentDescription = null,
+                colorFilter = ColorFilter.tint(GlanceTheme.colors.onSurfaceVariant),
+                modifier = GlanceModifier.size(16.dp),
+            )
+            Spacer(GlanceModifier.width(6.dp))
+        }
         Text(
-            text = leading,
+            text = label,
             maxLines = 1,
-            style = TextStyle(fontWeight = FontWeight.Medium, color = GlanceTheme.colors.onSecondaryContainer),
+            style = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.Medium, color = GlanceTheme.colors.onSurfaceVariant),
             modifier = GlanceModifier.defaultWeight(),
         )
-        if (tier.followupShowsTrailing) {
-            Spacer(GlanceModifier.width(8.dp))
+        if (trailing != null) {
             Text(
                 text = trailing,
                 maxLines = 1,
-                style = TextStyle(color = GlanceTheme.colors.onSecondaryContainer),
+                style = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.Medium, color = GlanceTheme.colors.onSurfaceVariant),
             )
         }
     }
 }
 
-/** Empty-state line shared by all widgets. */
+/**
+ * A segmented group: its large corner radius clips the stacked [Segment]s so only the group's outer
+ * corners are round while seams between items keep a small radius, matching the app's grouped
+ * lists. Corner clipping applies on API 31+; on 26–30 the group renders square.
+ */
 @Composable
-fun ColumnScope.WidgetEmpty(message: String, tier: WidgetSizeTier) {
-    if (tier == WidgetSizeTier.TALL) {
+fun SegmentedGroup(modifier: GlanceModifier = GlanceModifier, content: @Composable ColumnScope.() -> Unit) {
+    Column(modifier = modifier.fillMaxWidth().cornerRadius(GroupCorner), content = content)
+}
+
+@Composable
+fun SegmentGap() {
+    Spacer(GlanceModifier.height(SegmentGap))
+}
+
+/** One item in a [SegmentedGroup]. */
+@Composable
+fun Segment(
+    modifier: GlanceModifier = GlanceModifier,
+    background: ColorProvider = GlanceTheme.colors.surfaceVariant,
+    horizontalPadding: Dp = 14.dp,
+    verticalPadding: Dp = 8.dp,
+    content: @Composable RowScope.() -> Unit,
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(background)
+            .cornerRadius(SegmentCorner)
+            .padding(horizontal = horizontalPadding, vertical = verticalPadding),
+        verticalAlignment = Alignment.CenterVertically,
+        content = content,
+    )
+}
+
+/** Course color bar leading a list row. */
+@Composable
+fun CourseBar(color: ColorProvider, height: Dp = 28.dp) {
+    Box(GlanceModifier.width(4.dp).height(height).background(color).cornerRadius(2.dp)) {}
+}
+
+@Composable
+fun CourseDot(color: ColorProvider) {
+    Box(GlanceModifier.size(8.dp).background(color).cornerRadius(4.dp)) {}
+}
+
+/** Two-line list row text: [title] over a muted [supporting] line. */
+@Composable
+fun RowScope.RowText(title: String, supporting: String?) {
+    Column(GlanceModifier.defaultWeight()) {
         Text(
-            text = message,
-            style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant),
-            modifier = GlanceModifier.padding(top = 8.dp),
+            text = title,
+            maxLines = 1,
+            style = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.Medium, color = GlanceTheme.colors.onSurface),
         )
-    } else {
-        Column(
-            modifier = GlanceModifier
-                .fillMaxWidth()
-                .defaultWeight()
-                .background(GlanceTheme.colors.secondaryContainer)
-                .cornerRadius(24.dp)
-                .padding(horizontal = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(message, style = TextStyle(color = GlanceTheme.colors.onSecondaryContainer))
+        if (!supporting.isNullOrBlank()) {
+            Text(
+                text = supporting,
+                maxLines = 1,
+                style = TextStyle(fontSize = 12.sp, color = GlanceTheme.colors.onSurfaceVariant),
+            )
         }
+    }
+}
+
+/** Status pill: urgent ones ("Hoy", "Mañana") use the error container, like the app's badges. */
+@Composable
+fun WidgetPill(text: String, urgent: Boolean) {
+    Text(
+        text = text,
+        maxLines = 1,
+        style = TextStyle(
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Bold,
+            color = if (urgent) GlanceTheme.colors.onErrorContainer else GlanceTheme.colors.onPrimaryContainer,
+        ),
+        modifier = GlanceModifier
+            .background(if (urgent) GlanceTheme.colors.errorContainer else GlanceTheme.colors.primaryContainer)
+            .cornerRadius(12.dp)
+            .padding(horizontal = 8.dp, vertical = 3.dp),
+    )
+}
+
+/** Text drawn on a [ShapeBadge]: an optional small [label] above the [value] and an optional [unit] below it. */
+data class ShapeBadgeText(val label: String?, val value: String, val unit: String?)
+
+/** An expressive shape (cookie, sunny) with centered text, used for countdowns and departure times. */
+@Composable
+fun ShapeBadge(
+    shapeRes: Int,
+    size: Dp,
+    shapeColor: ColorProvider,
+    textColor: ColorProvider,
+    text: ShapeBadgeText,
+    valueSize: TextUnit,
+) {
+    Box(modifier = GlanceModifier.size(size), contentAlignment = Alignment.Center) {
+        Image(
+            provider = ImageProvider(shapeRes),
+            contentDescription = null,
+            colorFilter = ColorFilter.tint(shapeColor),
+            modifier = GlanceModifier.size(size),
+        )
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            val small = TextStyle(fontSize = 11.sp, fontWeight = FontWeight.Bold, color = textColor)
+            text.label?.let { Text(it, maxLines = 1, style = small) }
+            Text(text.value, maxLines = 1, style = TextStyle(fontSize = valueSize, fontWeight = FontWeight.Bold, color = textColor))
+            text.unit?.let { Text(it, maxLines = 1, style = small) }
+        }
+    }
+}
+
+/** Centered message for a widget with nothing to show. */
+@Composable
+fun ColumnScope.WidgetEmpty(message: String, iconRes: Int) {
+    Column(
+        modifier = GlanceModifier.fillMaxWidth().defaultWeight(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Image(
+            provider = ImageProvider(iconRes),
+            contentDescription = null,
+            colorFilter = ColorFilter.tint(GlanceTheme.colors.onSurfaceVariant),
+            modifier = GlanceModifier.size(24.dp),
+        )
+        Spacer(GlanceModifier.height(6.dp))
+        Text(message, maxLines = 2, style = TextStyle(fontSize = 13.sp, color = GlanceTheme.colors.onSurfaceVariant))
     }
 }

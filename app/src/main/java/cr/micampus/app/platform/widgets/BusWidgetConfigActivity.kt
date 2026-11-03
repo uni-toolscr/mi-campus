@@ -54,7 +54,7 @@ class BusWidgetConfigActivity : ComponentActivity() {
         setContent {
             MiCampusTheme {
                 val scope = rememberCoroutineScope()
-                // Wait for the onboarding-derived default before showing controls, so a user's
+                // Wait for the institution default before showing controls, so a user's
                 // in-progress selection isn't overwritten when the async read completes.
                 var defaultFilter by remember { mutableStateOf<String?>(null) }
                 LaunchedEffect(Unit) { defaultFilter = defaultInstitutionFilter(app) }

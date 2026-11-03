@@ -47,11 +47,13 @@ data class CampusEvent(
     val externalModifiedEpoch: Long? = null,
     val sourceDocumentId: String? = null,
     val notifyThirtyMinutesBefore: Boolean = false,
+    /** Marked done by the student (tasks); done events stop counting as pending and lose their reminders. */
+    val completed: Boolean = false,
 )
 /** An event has expired once its end time is strictly in the past relative to [now]. */
 fun CampusEvent.isExpired(now: LocalDateTime): Boolean = end.isBefore(now)
 
-data class CourseStyle(val courseKey: String, val colorIndex: Int, val emoji: String? = null)
+data class CourseStyle(val courseKey: String, val colorIndex: Int)
 data class TransportDirection(val id: String, val from: String, val to: String, val weekdays: List<String>, val saturday: List<String> = emptyList())
 data class TransportDataset(
     val version: Int,

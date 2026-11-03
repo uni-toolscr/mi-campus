@@ -1,11 +1,13 @@
 package cr.micampus.app.data.institution
 
 import cr.micampus.app.core.model.Institution
+import cr.micampus.app.core.model.ServiceStatus
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
 import java.time.Duration
+import java.time.LocalDate
 import java.time.LocalDateTime
 
 class NextDeparturesTest {
@@ -74,6 +76,23 @@ class NextDeparturesTest {
         assertTrue(defaultDepartures.none { it.departure == departure })
         assertTrue(widgetDepartures.any { it.departure == departure })
         assertTrue(afterGrace.none { it.departure == departure })
+    }
+
+    @Test fun serviceDaysStartWithTodayAndSkipToVerifiedDays() {
+        // Saturday 2026-11-07, Sunday has no service, so the next verified days are Monday and Tuesday.
+        val saturday = LocalDate.of(2026, 11, 7)
+        val days = repository.serviceDays(Institution.UCR, "Heredia-UCR", saturday)
+        assertEquals(listOf(saturday, LocalDate.of(2026, 11, 9), LocalDate.of(2026, 11, 10)), days.map { it.date })
+        assertTrue(days.all { it.status == ServiceStatus.VERIFIED })
+        val sunday = repository.serviceDays(Institution.UCR, "Heredia-UCR", saturday.plusDays(1))
+        assertEquals(ServiceStatus.NO_SERVICE, sunday.first().status)
+        assertEquals(LocalDate.of(2026, 11, 9), sunday[1].date)
+    }
+
+    @Test fun serviceDaysEndWithTheVerifiedRange() {
+        val days = repository.serviceDays(Institution.UCR, "Heredia-UCR", LocalDate.of(2026, 12, 31))
+        assertEquals(listOf(LocalDate.of(2026, 12, 31)), days.map { it.date })
+        assertEquals(ServiceStatus.EXPIRED, repository.serviceDays(Institution.UCR, "Heredia-UCR", LocalDate.of(2027, 1, 1)).single().status)
     }
 }
 
