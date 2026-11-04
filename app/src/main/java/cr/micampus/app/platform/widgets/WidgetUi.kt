@@ -63,8 +63,9 @@ import kotlinx.coroutines.flow.first
 
 /**
  * Shared size tiers for all home-screen widgets. The responsive sizes advertised by each provider
- * are 110 x 110, 110 x 180, 180 x 110, 180 x 180, 250 x 110, 250 x 180, and 250 x 280 dp.
+ * are 110 x 110, 150 x 150, 110 x 180, 180 x 110, 180 x 180, 250 x 110, 250 x 180, and 250 x 280 dp.
  * SQUARE and NARROW draw a single card, COMPACT a single row, MEDIUM and TALL a header plus a list.
+ * Widgets default to 2 x 2, which lands on SQUARE (150 x 150) or NARROW depending on the launcher grid.
  */
 enum class WidgetSizeTier { SQUARE, NARROW, COMPACT, MEDIUM, TALL }
 
@@ -73,6 +74,7 @@ val WidgetSizeTier.showsList: Boolean
 
 val WIDGET_RESPONSIVE_SIZES = setOf(
     DpSize(110.dp, 110.dp),
+    DpSize(150.dp, 150.dp),
     DpSize(110.dp, 180.dp),
     DpSize(180.dp, 110.dp),
     DpSize(180.dp, 180.dp),
@@ -88,6 +90,12 @@ fun widgetSizeTier(size: DpSize): WidgetSizeTier = when {
     size.height < 280.dp -> WidgetSizeTier.MEDIUM
     else -> WidgetSizeTier.TALL
 }
+
+/**
+ * Whether a single-card size has room for its supporting lines (lead label, details, next items).
+ * The 110 x 110 minimum keeps only the headline so nothing clips.
+ */
+fun widgetCardShowsDetail(size: DpSize): Boolean = size.height >= 150.dp
 
 // --- Widget deep-link targets -------------------------------------------------
 // Carried as a MainActivity intent extra so a widget tap lands on the matching
@@ -332,19 +340,48 @@ fun RowScope.RowText(title: String, supporting: String?) {
 /** Status pill: urgent ones ("Hoy", "Mañana") use the error container, like the app's badges. */
 @Composable
 fun WidgetPill(text: String, urgent: Boolean) {
+    StatusPill(
+        text = text,
+        background = if (urgent) GlanceTheme.colors.errorContainer else GlanceTheme.colors.primaryContainer,
+        color = if (urgent) GlanceTheme.colors.onErrorContainer else GlanceTheme.colors.onPrimaryContainer,
+    )
+}
+
+@Composable
+fun StatusPill(text: String, background: ColorProvider, color: ColorProvider, fontSize: TextUnit = 12.sp) {
     Text(
         text = text,
         maxLines = 1,
-        style = TextStyle(
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Bold,
-            color = if (urgent) GlanceTheme.colors.onErrorContainer else GlanceTheme.colors.onPrimaryContainer,
-        ),
+        style = TextStyle(fontSize = fontSize, fontWeight = FontWeight.Bold, color = color),
         modifier = GlanceModifier
-            .background(if (urgent) GlanceTheme.colors.errorContainer else GlanceTheme.colors.primaryContainer)
+            .background(background)
             .cornerRadius(12.dp)
             .padding(horizontal = 8.dp, vertical = 3.dp),
     )
+}
+
+/**
+ * The headline of a 2 x 2 card: a short [lead] ("quedan", "sale en") over a large [value] with an
+ * optional [unit] beside it ("min", "a. m."), e.g. "quedan / 25 min".
+ */
+data class WidgetCountdown(val lead: String, val value: String, val unit: String?)
+
+@Composable
+fun CountdownHeadline(countdown: WidgetCountdown, color: ColorProvider, showLead: Boolean, valueSize: TextUnit) {
+    if (showLead) {
+        Text(countdown.lead, maxLines = 1, style = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.Medium, color = color))
+    }
+    Row(verticalAlignment = Alignment.Bottom) {
+        Text(countdown.value, maxLines = 1, style = TextStyle(fontSize = valueSize, fontWeight = FontWeight.Bold, color = color))
+        countdown.unit?.let { unit ->
+            Text(
+                text = unit,
+                maxLines = 1,
+                style = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.Bold, color = color),
+                modifier = GlanceModifier.padding(start = 3.dp, bottom = 4.dp),
+            )
+        }
+    }
 }
 
 /** Text drawn on a [ShapeBadge]: an optional small [label] above the [value] and an optional [unit] below it. */

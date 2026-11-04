@@ -17,7 +17,7 @@ import kotlin.math.roundToInt
 @SdkSuppress(minSdkVersion = Build.VERSION_CODES.S)
 class WidgetMetadataApi31Test {
     @Test
-    fun providersExposeFourByTwoResponsivePreviewMetadata() {
+    fun providersDefaultToTwoByTwoWithResponsivePreviewMetadata() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val manager = AppWidgetManager.getInstance(context)
 
@@ -37,7 +37,7 @@ class WidgetMetadataApi31Test {
         }
         assertNotNull("Provider metadata missing for ${receiver.simpleName}", info)
         requireNotNull(info).also {
-            assertEquals(4, it.targetCellWidth)
+            assertEquals(2, it.targetCellWidth)
             assertEquals(2, it.targetCellHeight)
             assertEquals(previewLayout, it.previewLayout)
             val expectedMinimumResize = (110 * context.resources.displayMetrics.density).roundToInt()

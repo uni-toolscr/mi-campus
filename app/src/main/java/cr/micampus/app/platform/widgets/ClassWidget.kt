@@ -14,6 +14,7 @@ import androidx.glance.GlanceTheme
 import androidx.glance.LocalSize
 import androidx.glance.appwidget.GlanceAppWidget
 import androidx.glance.appwidget.GlanceAppWidgetReceiver
+import androidx.glance.appwidget.LinearProgressIndicator
 import androidx.glance.appwidget.SizeMode
 import androidx.glance.appwidget.cornerRadius
 import androidx.glance.appwidget.provideContent
@@ -21,6 +22,7 @@ import androidx.glance.background
 import androidx.glance.currentState
 import androidx.glance.layout.Alignment
 import androidx.glance.layout.Column
+import androidx.glance.layout.ColumnScope
 import androidx.glance.layout.Row
 import androidx.glance.layout.Spacer
 import androidx.glance.layout.fillMaxSize
@@ -69,9 +71,9 @@ class ClassWidget : GlanceAppWidget() {
             val filter = currentState<Preferences>()[WIDGET_INSTITUTIONS_KEY] ?: WIDGET_FILTER_BOTH
             val institutions = institutionsFor(filter).toSet()
             val visible = classes.filter { it.institution in institutions }
-            val tier = widgetSizeTier(LocalSize.current)
+            val size = LocalSize.current
             GlanceTheme {
-                ClassWidgetContent(visible, now, courses, use12h, tier, description, emptyLabel)
+                ClassWidgetContent(visible, now, courses, use12h, widgetSizeTier(size), widgetCardShowsDetail(size), description, emptyLabel)
             }
         }
     }
@@ -118,6 +120,33 @@ fun classHeroBadge(event: CampusEvent, state: ClassHeroState, today: LocalDate, 
     }
 }
 
+/** The 2×2 card's status pill: "Ahora" during the class, "Hoy" later today, else the day ("Mañana", "Mié", "9 nov"). */
+fun classCardStatus(state: ClassHeroState, start: LocalDate, today: LocalDate): String = when (state) {
+    is ClassHeroState.InProgress -> "Ahora"
+    is ClassHeroState.Today -> "Hoy"
+    ClassHeroState.Later -> widgetDayLabel(start, today).replaceFirstChar(Char::uppercaseChar)
+}
+
+/** The 2×2 card's headline: minutes while counting down ("quedan 25 min", "empieza en 18 min"), else a clock time. */
+fun classCardCountdown(event: CampusEvent, state: ClassHeroState, use12h: Boolean): WidgetCountdown {
+    val start = badgeClock(event.start, use12h)
+    return when (state) {
+        is ClassHeroState.InProgress -> state.minutesLeft?.let { WidgetCountdown("quedan", "$it", "min") }
+            ?: badgeClock(event.end, use12h).let { WidgetCountdown("hasta", it.time, it.meridiem) }
+        is ClassHeroState.Today -> state.minutesUntil?.let { WidgetCountdown("empieza en", "$it", "min") }
+            ?: WidgetCountdown("empieza", start.time, start.meridiem)
+        ClassHeroState.Later -> WidgetCountdown("empieza", start.time, start.meridiem)
+    }
+}
+
+/** How far through the class [now] is, 0–1; null when the class hasn't started. */
+fun classProgress(event: CampusEvent, now: LocalDateTime): Float? {
+    if (event.start.isAfter(now)) return null
+    val total = Duration.between(event.start, event.end).toMinutes()
+    if (total <= 0) return 1f
+    return (Duration.between(event.start, now).toMinutes().toFloat() / total).coerceIn(0f, 1f)
+}
+
 /** Trailing label of a following class: its start time today, else the relative day and time. */
 fun classRowTrailing(event: CampusEvent, today: LocalDate, use12h: Boolean): String =
     if (event.start.toLocalDate() == today) event.start.format(timeFormatter(use12h)) else widgetWhenLabel(event.start, today, use12h)
@@ -142,6 +171,7 @@ private fun ClassWidgetContent(
     courses: WidgetCourses,
     use12h: Boolean,
     tier: WidgetSizeTier,
+    showDetail: Boolean,
     description: String,
     emptyLabel: String,
 ) {
@@ -166,11 +196,19 @@ private fun ClassWidgetContent(
     )
     if (!tier.showsList) {
         // Small sizes: the hero card is the whole widget.
-        WidgetFrame(description, WIDGET_DEST_CALENDAR_HORARIO, background = colors.container, padding = 14.dp) {
+        val padding = if (tier == WidgetSizeTier.COMPACT || showDetail) 14.dp else 10.dp
+        WidgetFrame(description, WIDGET_DEST_CALENDAR_HORARIO, background = colors.container, padding = padding) {
             if (tier == WidgetSizeTier.COMPACT) {
                 ClassHeroRow(heroContent, titleSize = 20.sp, badgeSize = 64.dp, modifier = GlanceModifier.fillMaxSize())
             } else {
-                ClassHeroCard(heroContent)
+                ClassCard(
+                    content = heroContent,
+                    status = classCardStatus(state, hero.start.toLocalDate(), today),
+                    countdown = classCardCountdown(hero, state, use12h),
+                    progress = classProgress(hero, now),
+                    code = courses.codeFor(hero),
+                    showDetail = showDetail,
+                )
             }
         }
         return
@@ -233,26 +271,57 @@ private fun ClassHeroRow(content: ClassHeroContent, titleSize: TextUnit, badgeSi
     }
 }
 
-/** 2×2 layout: title and badge share the top, details sit at the bottom. */
+/**
+ * 2×2 layout: a status pill on top, the countdown as the headline (with how far through the class
+ * you are while it runs), then the course name and its time and room.
+ */
 @Composable
-private fun ClassHeroCard(content: ClassHeroContent) {
-    Column(GlanceModifier.fillMaxSize()) {
-        Row(GlanceModifier.fillMaxWidth()) {
-            Column(GlanceModifier.defaultWeight()) {
-                HeroOverline(content)
-                Spacer(GlanceModifier.height(2.dp))
-                Text(
-                    text = content.title,
-                    maxLines = 3,
-                    style = TextStyle(fontSize = 18.sp, fontWeight = FontWeight.Bold, color = content.colors.onContainer),
-                )
-            }
-            Spacer(GlanceModifier.width(6.dp))
-            HeroBadge(content, 56.dp, 16.sp)
-        }
+private fun ColumnScope.ClassCard(
+    content: ClassHeroContent,
+    status: String,
+    countdown: WidgetCountdown,
+    progress: Float?,
+    code: String?,
+    showDetail: Boolean,
+) {
+    val onContainer = content.colors.onContainer
+    Row(GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        StatusPill(status, background = content.colors.accent, color = content.colors.container, fontSize = 11.sp)
         Spacer(GlanceModifier.defaultWeight())
-        HeroDetail(content, maxLines = 2)
+        if (showDetail && code != null) {
+            Text(code, maxLines = 1, style = TextStyle(fontSize = 11.sp, fontWeight = FontWeight.Medium, color = onContainer))
+        }
     }
+    Column(GlanceModifier.fillMaxWidth().defaultWeight(), verticalAlignment = Alignment.Bottom) {
+        val short = countdown.value.length <= 2
+        CountdownHeadline(
+            countdown = countdown,
+            color = onContainer,
+            showLead = showDetail,
+            valueSize = when {
+                showDetail && short -> 44.sp
+                showDetail -> 36.sp
+                short -> 34.sp
+                else -> 28.sp
+            },
+        )
+        if (progress != null) {
+            Spacer(GlanceModifier.height(6.dp))
+            LinearProgressIndicator(
+                progress = progress,
+                modifier = GlanceModifier.fillMaxWidth().height(6.dp).cornerRadius(3.dp),
+                color = content.colors.accent,
+                backgroundColor = GlanceTheme.colors.widgetBackground,
+            )
+        }
+    }
+    Spacer(GlanceModifier.height(if (showDetail) 8.dp else 4.dp))
+    Text(
+        text = content.title,
+        maxLines = 1,
+        style = TextStyle(fontSize = if (showDetail) 15.sp else 13.sp, fontWeight = FontWeight.Bold, color = onContainer),
+    )
+    if (showDetail) HeroDetail(content, maxLines = 1)
 }
 
 @Composable
