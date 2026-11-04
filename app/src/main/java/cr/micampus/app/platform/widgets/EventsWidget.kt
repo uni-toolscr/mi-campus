@@ -15,15 +15,18 @@ import androidx.glance.LocalSize
 import androidx.glance.appwidget.GlanceAppWidget
 import androidx.glance.appwidget.GlanceAppWidgetReceiver
 import androidx.glance.appwidget.SizeMode
+import androidx.glance.appwidget.cornerRadius
 import androidx.glance.appwidget.provideContent
+import androidx.glance.background
 import androidx.glance.currentState
 import androidx.glance.layout.Alignment
+import androidx.glance.layout.Column
 import androidx.glance.layout.ColumnScope
 import androidx.glance.layout.Row
 import androidx.glance.layout.Spacer
 import androidx.glance.layout.fillMaxSize
 import androidx.glance.layout.fillMaxWidth
-import androidx.glance.layout.height
+import androidx.glance.layout.padding
 import androidx.glance.layout.size
 import androidx.glance.layout.width
 import androidx.glance.state.GlanceStateDefinition
@@ -68,9 +71,9 @@ class EventsWidget : GlanceAppWidget() {
             val filter = currentState<Preferences>()[WIDGET_INSTITUTIONS_KEY] ?: WIDGET_FILTER_BOTH
             val institutions = institutionsFor(filter).toSet()
             val visible = upcoming.filter { it.institution in institutions }
-            val tier = widgetSizeTier(LocalSize.current)
+            val size = LocalSize.current
             GlanceTheme {
-                EventsWidgetContent(visible, now.toLocalDate(), courses, use12h, tier, description, emptyLabel)
+                EventsWidgetContent(visible, now.toLocalDate(), courses, use12h, widgetSizeTier(size), widgetCardShowsDetail(size), description, emptyLabel)
             }
         }
     }
@@ -98,6 +101,12 @@ fun eventPill(event: CampusEvent, today: LocalDate): EventPill = when (homeEvent
 fun eventSupporting(event: CampusEvent, today: LocalDate, use12h: Boolean): String =
     listOfNotNull(widgetWhenLabel(event.start, today, use12h), event.location.takeIf(String::isNotBlank)).joinToString(" · ")
 
+/** The 2×2 card's detail line: the time (with its day unless it's today) and the course code or place. */
+fun eventCardDetail(event: CampusEvent, courseCode: String?, today: LocalDate, use12h: Boolean): String {
+    val time = if (event.start.toLocalDate() == today) event.start.format(timeFormatter(use12h)) else widgetWhenLabel(event.start, today, use12h)
+    return listOfNotNull(time, courseCode ?: event.location.takeIf(String::isNotBlank)).joinToString(" · ")
+}
+
 fun pendingEventsLabel(count: Int): String = if (count == 1) "1 pendiente" else "$count pendientes"
 
 private fun eventRowLimit(tier: WidgetSizeTier): Int = when (tier) {
@@ -119,14 +128,21 @@ private fun EventsWidgetContent(
     courses: WidgetCourses,
     use12h: Boolean,
     tier: WidgetSizeTier,
+    showDetail: Boolean,
     description: String,
     emptyLabel: String,
 ) {
-    WidgetFrame(description, WIDGET_DEST_CALENDAR_AGENDA, padding = if (tier.showsList) 12.dp else 14.dp) {
+    val card = tier == WidgetSizeTier.SQUARE || tier == WidgetSizeTier.NARROW
+    val padding = when {
+        tier.showsList -> 12.dp
+        card && events.isNotEmpty() -> if (showDetail) 8.dp else 6.dp
+        else -> 14.dp
+    }
+    WidgetFrame(description, WIDGET_DEST_CALENDAR_AGENDA, padding = padding) {
         val next = events.firstOrNull()
         when {
             next == null -> WidgetEmpty(emptyLabel, R.drawable.ic_widget_event)
-            tier == WidgetSizeTier.SQUARE || tier == WidgetSizeTier.NARROW -> NextEventCard(next, events.drop(1), today, courses, use12h)
+            card -> EventCard(next, events.getOrNull(1), today, courses, use12h, showDetail)
             else -> {
                 if (tier.showsList) WidgetHeader("Próximos eventos", pendingEventsLabel(events.size))
                 val rows = events.take(eventRowLimit(tier))
@@ -148,50 +164,81 @@ private fun EventsWidgetContent(
     }
 }
 
-/** 2×2 layout: the next event large, with dots for the ones after it. */
+/**
+ * 2×2 layout: a segmented group with the next event on its course color, and below it one row
+ * naming the event after it. The minimum size keeps only the top segment.
+ */
 @Composable
-private fun ColumnScope.NextEventCard(
+private fun ColumnScope.EventCard(
     event: CampusEvent,
-    later: List<CampusEvent>,
+    following: CampusEvent?,
     today: LocalDate,
     courses: WidgetCourses,
     use12h: Boolean,
+    showDetail: Boolean,
 ) {
-    val accent = courses.colorsFor(event)?.accent ?: GlanceTheme.colors.primary
-    Row(GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        eventPill(event, today).let { WidgetPill(it.text, it.urgent) }
-        Spacer(GlanceModifier.defaultWeight())
-        Image(
-            provider = ImageProvider(eventIcon(event.kind)),
-            contentDescription = null,
-            colorFilter = ColorFilter.tint(accent),
-            modifier = GlanceModifier.size(18.dp),
-        )
-    }
-    Spacer(GlanceModifier.height(6.dp))
-    Text(
-        text = event.title,
-        maxLines = 2,
-        style = TextStyle(fontSize = 18.sp, fontWeight = FontWeight.Bold, color = GlanceTheme.colors.onSurface),
+    val colors = courses.colorsFor(event) ?: WidgetCourseColors(
+        GlanceTheme.colors.primaryContainer,
+        GlanceTheme.colors.onPrimaryContainer,
+        GlanceTheme.colors.primary,
     )
-    Text(
-        text = listOfNotNull(event.start.format(timeFormatter(use12h)), courses.codeFor(event) ?: event.location.takeIf(String::isNotBlank)).joinToString(" · "),
-        maxLines = 1,
-        style = TextStyle(fontSize = 12.sp, color = GlanceTheme.colors.onSurfaceVariant),
-    )
-    Spacer(GlanceModifier.defaultWeight())
-    if (later.isNotEmpty()) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            later.take(3).forEach { event ->
-                CourseDot(courses.colorsFor(event)?.accent ?: GlanceTheme.colors.outline)
-                Spacer(GlanceModifier.width(4.dp))
+    SegmentedGroup(GlanceModifier.defaultWeight()) {
+        Column(
+            GlanceModifier
+                .fillMaxWidth()
+                .defaultWeight()
+                .background(colors.container)
+                .cornerRadius(6.dp)
+                .padding(horizontal = if (showDetail) 12.dp else 10.dp, vertical = if (showDetail) 10.dp else 8.dp),
+        ) {
+            Row(GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                val pill = eventPill(event, today)
+                // Urgent pills keep the error container; the rest invert the course color so they never blend in.
+                if (pill.urgent) WidgetPill(pill.text, urgent = true) else StatusPill(pill.text, background = colors.onContainer, color = colors.container)
+                Spacer(GlanceModifier.defaultWeight())
+                Image(
+                    provider = ImageProvider(eventIcon(event.kind)),
+                    contentDescription = null,
+                    colorFilter = ColorFilter.tint(colors.onContainer),
+                    modifier = GlanceModifier.size(16.dp),
+                )
             }
-            Spacer(GlanceModifier.width(2.dp))
+            Spacer(GlanceModifier.defaultWeight())
             Text(
-                text = "+${later.size} ${if (later.size == 1) "próximo" else "próximos"}",
-                maxLines = 1,
-                style = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.Medium, color = GlanceTheme.colors.onSurfaceVariant),
+                text = event.title,
+                maxLines = 2,
+                style = TextStyle(fontSize = if (showDetail) 16.sp else 14.sp, fontWeight = FontWeight.Bold, color = colors.onContainer),
             )
+            if (showDetail) {
+                Text(
+                    text = eventCardDetail(event, courses.codeFor(event), today, use12h),
+                    maxLines = 1,
+                    style = TextStyle(fontSize = 12.sp, color = colors.onContainer),
+                )
+            }
+        }
+        if (showDetail) {
+            SegmentGap()
+            Segment(horizontalPadding = 12.dp, verticalPadding = 8.dp) {
+                if (following == null) {
+                    Text("Nada más pendiente", maxLines = 1, style = TextStyle(fontSize = 12.sp, color = GlanceTheme.colors.onSurfaceVariant))
+                } else {
+                    CourseDot(courses.colorsFor(following)?.accent ?: GlanceTheme.colors.outline)
+                    Spacer(GlanceModifier.width(7.dp))
+                    Text(
+                        text = following.title,
+                        maxLines = 1,
+                        style = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.Medium, color = GlanceTheme.colors.onSurface),
+                        modifier = GlanceModifier.defaultWeight(),
+                    )
+                    Spacer(GlanceModifier.width(6.dp))
+                    Text(
+                        text = widgetDayLabel(following.start.toLocalDate(), today),
+                        maxLines = 1,
+                        style = TextStyle(fontSize = 11.sp, fontWeight = FontWeight.Bold, color = GlanceTheme.colors.onSurfaceVariant),
+                    )
+                }
+            }
         }
     }
 }

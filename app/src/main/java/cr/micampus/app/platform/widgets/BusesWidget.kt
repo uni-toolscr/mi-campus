@@ -22,6 +22,7 @@ import androidx.glance.appwidget.provideContent
 import androidx.glance.background
 import androidx.glance.currentState
 import androidx.glance.layout.Alignment
+import androidx.glance.layout.Box
 import androidx.glance.layout.Column
 import androidx.glance.layout.ColumnScope
 import androidx.glance.layout.Row
@@ -30,6 +31,7 @@ import androidx.glance.layout.fillMaxHeight
 import androidx.glance.layout.fillMaxSize
 import androidx.glance.layout.fillMaxWidth
 import androidx.glance.layout.height
+import androidx.glance.layout.padding
 import androidx.glance.layout.size
 import androidx.glance.layout.width
 import androidx.glance.state.GlanceStateDefinition
@@ -61,7 +63,8 @@ class BusesWidget : GlanceAppWidget() {
             val filter = prefs[WIDGET_INSTITUTIONS_KEY] ?: WIDGET_FILTER_BOTH
             val directionIds = parseDirectionFilter(prefs[BUS_WIDGET_DIRECTIONS_KEY])
             val now = LocalDateTime.now()
-            val tier = widgetSizeTier(LocalSize.current)
+            val size = LocalSize.current
+            val tier = widgetSizeTier(size)
             val departures = runCatching {
                 app.container.transport.upcomingDepartures(
                     institutions = institutionsFor(filter),
@@ -73,7 +76,7 @@ class BusesWidget : GlanceAppWidget() {
             }.getOrDefault(emptyList())
 
             GlanceTheme {
-                BusesWidgetContent(departures, now, use12h, filter, tier, "$description, ${widgetInstitutionLabel(context, filter)}", emptyLabel)
+                BusesWidgetContent(departures, now, use12h, filter, tier, widgetCardShowsDetail(size), "$description, ${widgetInstitutionLabel(context, filter)}", emptyLabel)
             }
         }
     }
@@ -97,6 +100,19 @@ fun busCountdownLabel(departure: LocalDateTime, now: LocalDateTime): String =
         BusCountdownPresentation.Scheduled, null -> "Próxima salida"
     }
 
+/** The 2×2 card's headline: "sale en 12 min" with the clock time as [caption] inside the live window, else the time itself. */
+data class BusCardHeadline(val countdown: WidgetCountdown, val caption: String?)
+
+fun busCardHeadline(departure: LocalDateTime, now: LocalDateTime, use12h: Boolean): BusCardHeadline {
+    val clock = badgeClock(departure, use12h)
+    return when (val countdown = busCountdownPresentation(departure, now)) {
+        is BusCountdownPresentation.Minutes ->
+            BusCardHeadline(WidgetCountdown("sale en", "${countdown.value}", "min"), departure.format(timeFormatter(use12h)))
+        BusCountdownPresentation.DepartingNow -> BusCardHeadline(WidgetCountdown("saliendo ahora", clock.time, clock.meridiem), null)
+        BusCountdownPresentation.Scheduled, null -> BusCardHeadline(WidgetCountdown("próxima salida", clock.time, clock.meridiem), null)
+    }
+}
+
 private fun busRowLimit(tier: WidgetSizeTier): Int = if (tier == WidgetSizeTier.TALL) 4 else 3
 
 @Composable
@@ -106,6 +122,7 @@ private fun BusesWidgetContent(
     use12h: Boolean,
     filter: String,
     tier: WidgetSizeTier,
+    showDetail: Boolean,
     description: String,
     emptyLabel: String,
 ) {
@@ -119,20 +136,13 @@ private fun BusesWidgetContent(
     val route = busRouteLabel(next, filter)
     when (tier) {
         WidgetSizeTier.SQUARE, WidgetSizeTier.NARROW ->
-            WidgetFrame(description, WIDGET_DEST_TRANSPORT, background = GlanceTheme.colors.tertiaryContainer) {
-                BusRouteLine(route, GlanceTheme.colors.onTertiaryContainer)
-                Column(GlanceModifier.fillMaxWidth().defaultWeight(), horizontalAlignment = Alignment.CenterHorizontally, verticalAlignment = Alignment.CenterVertically) {
-                    DepartureShape(R.drawable.widget_shape_sunny_soft, if (tier == WidgetSizeTier.SQUARE) 84.dp else 112.dp, time, countdown)
-                }
-                val later = departures.drop(1).take(2)
-                if (later.isNotEmpty()) {
-                    Text(
-                        text = "Luego " + later.joinToString(" · ") { it.departure.format(timeFormatter(use12h)) },
-                        maxLines = 1,
-                        style = TextStyle(fontSize = 11.sp, fontWeight = FontWeight.Medium, color = GlanceTheme.colors.onTertiaryContainer),
-                        modifier = GlanceModifier.fillMaxWidth(),
-                    )
-                }
+            WidgetFrame(
+                description,
+                WIDGET_DEST_TRANSPORT,
+                background = GlanceTheme.colors.tertiaryContainer,
+                padding = if (showDetail) 14.dp else 10.dp,
+            ) {
+                BusCard(route, busCardHeadline(next.departure, now, use12h), departures.drop(1), use12h, showDetail)
             }
         WidgetSizeTier.COMPACT ->
             WidgetFrame(description, WIDGET_DEST_TRANSPORT, background = GlanceTheme.colors.tertiaryContainer) {
@@ -192,6 +202,67 @@ private fun BusesWidgetContent(
                     }
                 }
             }
+    }
+}
+
+/**
+ * 2×2 layout: the route on top, minutes to departure as the headline over a soft sunny shape,
+ * and the next departures as chips along the bottom.
+ */
+@Composable
+private fun ColumnScope.BusCard(
+    route: String,
+    headline: BusCardHeadline,
+    later: List<UpcomingDeparture>,
+    use12h: Boolean,
+    showDetail: Boolean,
+) {
+    val color = GlanceTheme.colors.onTertiaryContainer
+    Box(GlanceModifier.fillMaxWidth().defaultWeight(), contentAlignment = Alignment.BottomEnd) {
+        Image(
+            provider = ImageProvider(R.drawable.widget_shape_sunny_soft),
+            contentDescription = null,
+            colorFilter = ColorFilter.tint(color),
+            modifier = GlanceModifier.size(if (showDetail) 112.dp else 72.dp),
+        )
+        Column(GlanceModifier.fillMaxSize()) {
+            BusRouteLine(route, color)
+            Column(GlanceModifier.fillMaxWidth().defaultWeight(), verticalAlignment = Alignment.CenterVertically) {
+                val short = headline.countdown.value.length <= 2
+                CountdownHeadline(
+                    countdown = headline.countdown,
+                    color = color,
+                    showLead = showDetail,
+                    valueSize = when {
+                        showDetail && short -> 36.sp
+                        showDetail -> 32.sp
+                        short -> 30.sp
+                        else -> 26.sp
+                    },
+                )
+                if (showDetail && headline.caption != null) {
+                    Text(headline.caption, maxLines = 1, style = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.Medium, color = color))
+                }
+            }
+            if (showDetail && later.isNotEmpty()) {
+                // Two chips need the full 2×2 width; a narrow column fits one.
+                val chips = later.take(if (LocalSize.current.width >= 150.dp) 2 else 1)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    chips.forEachIndexed { index, departure ->
+                        if (index > 0) Spacer(GlanceModifier.width(6.dp))
+                        Text(
+                            text = departure.departure.format(timeFormatter(use12h)),
+                            maxLines = 1,
+                            style = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.Bold, color = GlanceTheme.colors.onSurface),
+                            modifier = GlanceModifier
+                                .background(GlanceTheme.colors.widgetBackground)
+                                .cornerRadius(10.dp)
+                                .padding(horizontal = 8.dp, vertical = 4.dp),
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 
