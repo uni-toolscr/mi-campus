@@ -2,7 +2,13 @@ name: Android verification
 
 on:
   push:
+    branches: ['1.0'] # listing branches also keeps tag pushes out; release.yml verifies those
   pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
