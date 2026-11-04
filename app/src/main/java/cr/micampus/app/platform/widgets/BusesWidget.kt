@@ -234,10 +234,10 @@ private fun ColumnScope.BusCard(
                     color = color,
                     showLead = showDetail,
                     valueSize = when {
-                        showDetail && short -> 44.sp
-                        showDetail -> 36.sp
-                        short -> 34.sp
-                        else -> 28.sp
+                        showDetail && short -> 36.sp
+                        showDetail -> 32.sp
+                        short -> 30.sp
+                        else -> 26.sp
                     },
                 )
                 if (showDetail && headline.caption != null) {

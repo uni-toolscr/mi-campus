@@ -297,12 +297,13 @@ private fun ColumnScope.ClassCard(
         CountdownHeadline(
             countdown = countdown,
             color = onContainer,
-            showLead = showDetail,
+            // While the class runs, the "Ahora" pill and the progress bar say it; dropping the lead keeps the card within 150 dp.
+            showLead = showDetail && progress == null,
             valueSize = when {
-                showDetail && short -> 44.sp
-                showDetail -> 36.sp
-                short -> 34.sp
-                else -> 28.sp
+                showDetail && short -> 36.sp
+                showDetail -> 32.sp
+                short -> 30.sp
+                else -> 26.sp
             },
         )
         if (progress != null) {
@@ -315,7 +316,7 @@ private fun ColumnScope.ClassCard(
             )
         }
     }
-    Spacer(GlanceModifier.height(if (showDetail) 8.dp else 4.dp))
+    Spacer(GlanceModifier.height(if (showDetail) 6.dp else 4.dp))
     Text(
         text = content.title,
         maxLines = 1,
